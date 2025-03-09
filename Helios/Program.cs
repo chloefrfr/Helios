@@ -1,6 +1,7 @@
 using Helios.Configuration;
 using Helios.Configuration.Services;
 using Helios.Utilities;
+using Helios.Utilities.Middleware;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 
@@ -19,8 +20,13 @@ namespace Helios
             
             var app = builder.Build();
 
+            app.UseCors("AllowAll");
             app.UseHttpsRedirection();
-            app.MapGet("/", () => "Hello, World!");
+            app.UseAuthorization();
+            
+            app.MapControllers();
+            app.UseHttpsRedirection();
+            app.UseMiddleware<RequestLoggingMiddleware>();
 
             var address = builder.Configuration["ASPNETCORE_URLS"];
             Logger.Info($"Helios is running on: {address}");

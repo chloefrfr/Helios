@@ -26,8 +26,7 @@ public class Logger
             [ConsoleThemeStyle.LevelError] = "\x1b[38;5;196m",
             [ConsoleThemeStyle.LevelFatal] = "\x1b[38;5;199m",
         });
-
-
+        
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
@@ -38,7 +37,6 @@ public class Logger
                 theme: heliosSerilogTheme
             )
             .CreateLogger();
-
     }
 
     public static void Info(string message, string method = null)
