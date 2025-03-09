@@ -1,0 +1,6 @@
+@Helios_HostAddress = http://localhost:5084
+
+GET {{Helios_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
