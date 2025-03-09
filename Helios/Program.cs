@@ -1,9 +1,7 @@
 using Helios.Configuration;
 using Helios.Configuration.Services;
 using Helios.Utilities;
-using Helios.Utilities.Middleware;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
+using Helios.Utilities.Middleware;  
 
 namespace Helios
 {
