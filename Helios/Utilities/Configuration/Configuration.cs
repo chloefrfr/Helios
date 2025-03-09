@@ -10,7 +10,7 @@ public static class Configuration
 {
     public static ConfigTypes Load()
     {
-        var configFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.xml");
+        var configFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "config.xml");
         
         if (!File.Exists(configFile))
             throw new FileNotFoundException($"Config file '{configFile}' not found.");

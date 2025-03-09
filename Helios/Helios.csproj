@@ -21,10 +21,10 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Update="config.xml">
+      <None Update="Schemas\ConfigSchema.xsd">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
-      <None Update="Schemas\ConfigSchema.xsd">
+      <None Update="Assets\config.xml">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
     </ItemGroup>
