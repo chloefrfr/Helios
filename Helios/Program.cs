@@ -1,44 +1,31 @@
-var builder = WebApplication.CreateBuilder(args);
+using Helios.Configuration;
+using Helios.Configuration.Services;
+using Helios.Utilities;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+namespace Helios
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
+    public class Program
     {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast")
-    .WithOpenApi();
+        static void Main(string[] args)
+        {
+            Constants.dbContext.Initialize();
+            
+            var builder = WebApplication.CreateBuilder(args);
 
-app.Run();
+            ServiceConfiguration.ConfigureServices(builder.Services);
+            LoggingConfiguration.ConfigureLogging(builder.Logging, builder.Configuration);
+            
+            var app = builder.Build();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+            app.UseHttpsRedirection();
+            app.MapGet("/", () => "Hello, World!");
+
+            var address = builder.Configuration["ASPNETCORE_URLS"];
+            Logger.Info($"Helios is running on: {address}");
+
+            app.Run();
+        }
+    }
 }

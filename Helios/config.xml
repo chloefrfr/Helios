@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config xmlns="http://fortmp.dev/config">
+    <DatabaseConnectionUrl>Host=localhost;Port=5432;Database=dbwrappertest;Username=postgres;Password=a</DatabaseConnectionUrl>
+</config>
