@@ -3,22 +3,22 @@ using Helios.Database.Attributes;
 
 namespace Helios.Database.Tables.Account
 {
-    [Entity("users")] // Maps the User class to the "users" table
+    [Entity("users")]
     public class User : BaseTable
     {
-        [Key] // Marks this property as the primary key
-        [Column("id")] // Maps to the "id" column in the database
+        [Key] 
+        [Column("id")] 
         public int Id { get; set; }
 
-        [Column("username")] // Maps to the "username" column
+        [Column("username")] 
         public string Username { get; set; }
 
-        [Column("email")] // Maps to the "email" column
-        [EmailAddress] // Adds validation for email format
+        [Column("email")]
+        [EmailAddress]
         public string Email { get; set; }
 
-        [Column("password")] // Maps to the "password" column
-        [DataType(DataType.Password)] // Indicates this is a password field
+        [Column("password")]
+        [DataType(DataType.Password)] 
         public string Password { get; set; }
     }
 }
