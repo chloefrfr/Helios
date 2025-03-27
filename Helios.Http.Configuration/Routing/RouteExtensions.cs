@@ -1,4 +1,7 @@
 ﻿using Helios.Http.Configuration.Routing.Classes;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Helios.Http.Configuration.Routing;
@@ -20,8 +23,11 @@ public static class RouteExtensions
         configure?.Invoke(options);
 
         services.AddSingleton(options);
-        services.AddControllers();
+        // services.AddControllers();
 
         return services;
     }
+    
+    public static void MapRoutes(
+        this WebApplication)
 }
