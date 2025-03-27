@@ -293,7 +293,7 @@ public class DatabaseCtx : IDisposable
             using (var command = new NpgsqlCommand(sql, _connection))
             {
                 command.ExecuteNonQuery();
-                Logger.Error($"Table {tableName} created.");
+                Logger.Info($"Table {tableName} created.");
             }
         }
         catch (Exception ex)

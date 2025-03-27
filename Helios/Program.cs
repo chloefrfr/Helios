@@ -12,9 +12,10 @@ namespace Helios
             Constants.dbContext.Initialize();
             
             var builder = WebApplication.CreateBuilder(args);
-
+            
             ServiceConfiguration.ConfigureServices(builder.Services);
             LoggingConfiguration.ConfigureLogging(builder.Logging, builder.Configuration);
+            WebhostConfiguration.ConfigureWebhosts(builder.WebHost);
             
             var app = builder.Build();
 

@@ -11,7 +11,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="933a2f09-5d51-4016-a1f5-d8d301feee49" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/Helios.Database/Tables/Account/User.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Helios.Database/Tables/Account/User.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Helios.Database/DatabaseCtx.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Helios.Database/DatabaseCtx.cs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -144,7 +144,7 @@
       <option name="presentableId" value="Default" />
       <updated>1741504067271</updated>
       <workItem from="1741504069149" duration="3532000" />
-      <workItem from="1743052145853" duration="3206000" />
+      <workItem from="1743052145853" duration="3515000" />
     </task>
     <servers />
   </component>

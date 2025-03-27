@@ -43,6 +43,7 @@ public static class ServiceConfiguration
                 );
             };
         });
+        
 
         services.AddCors(options =>
         {
