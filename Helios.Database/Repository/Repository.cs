@@ -30,6 +30,8 @@ namespace Helios.Database.Repository
         public Repository(string connectionString)
         {
             _connectionString = connectionString;
+            Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
+
             SqlMapper.AddTypeHandler(new JsonListManager());
             SqlMapper.SetTypeMap(typeof(TEntity), new CustomPropertyTypeMap(typeof(TEntity),
                 (type, columnName) => type.GetProperties().FirstOrDefault(prop =>
