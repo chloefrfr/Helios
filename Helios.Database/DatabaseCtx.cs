@@ -27,7 +27,7 @@ public class DatabaseCtx : IDisposable
             _connection = new NpgsqlConnection(_connectionString);
             _connection.Open();
             Logger.Info("Database connection opened.");
-            CreateTables();
+            MigrateTables();
         }
         catch (Exception ex)
         {
@@ -37,25 +37,25 @@ public class DatabaseCtx : IDisposable
     }
 
     /// <summary>
-    /// Creates the necessary tables based on the registered entities.
+    /// Migrates tables based on the registered entities.
     /// </summary>
-    private void CreateTables()
+    private void MigrateTables()
     {
         var entityTypes = Assembly.GetExecutingAssembly().GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract && t.GetCustomAttributes(typeof(EntityAttribute), true).Any());
 
         foreach (var entityType in entityTypes)
         {
-            CreateOrUpdateTable(entityType);
+            MigrateTable(entityType);
         }
     }
 
-
     /// <summary>
-    /// Creates a new table or updates an existing table based on the specified entity type.
+    /// Migrates a table based on the specified entity type.
+    /// Creates the table if it doesn't exist or updates it if the schema has changed.
     /// </summary>
-    /// <param name="entityType">The type of the entity to create or update.</param>
-    private void CreateOrUpdateTable(Type entityType)
+    /// <param name="entityType">The type of the entity to migrate.</param>
+    private void MigrateTable(Type entityType)
     {
         var tableName = entityType.GetCustomAttribute<EntityAttribute>()?.TableName;
 
@@ -68,6 +68,10 @@ public class DatabaseCtx : IDisposable
         if (!TableExists(tableName))
         {
             CreateTable(entityType);
+        }
+        else
+        {
+            UpdateTableIfChanged(entityType);
         }
     }
 
@@ -92,10 +96,6 @@ public class DatabaseCtx : IDisposable
         {
             UpdateTable(entityType, existingColumns, entityColumns);
         }
-        else
-        {
-            Logger.Error($"Table '{tableName}' is up-to-date. No migration needed.");
-        }
     }
 
     /// <summary>
@@ -114,27 +114,152 @@ public class DatabaseCtx : IDisposable
             return;
         }
 
+        bool needsTableRebuild = false;
+
         foreach (var column in entityColumns)
         {
-            if (!existingColumns.ContainsKey(column.Key))
+            if (existingColumns.ContainsKey(column.Key) && existingColumns[column.Key] != column.Value)
             {
-                AddColumn(tableName, column.Key, column.Value);
-            }
-            else if (existingColumns[column.Key] != column.Value)
-            {
-                AlterColumnType(tableName, column.Key, column.Value);
+                if (!CanAlterColumnTypeInPlace(existingColumns[column.Key], column.Value))
+                {
+                    needsTableRebuild = true;
+                    break;
+                }
             }
         }
 
-        foreach (var column in existingColumns)
+        if (needsTableRebuild)
         {
-            if (!entityColumns.ContainsKey(column.Key))
+            RebuildTableWithData(entityType, tableName, existingColumns, entityColumns);
+        }
+        else
+        {
+            foreach (var column in entityColumns)
             {
-                DropColumn(tableName, column.Key);
+                if (!existingColumns.ContainsKey(column.Key))
+                {
+                    AddColumn(tableName, column.Key, column.Value);
+                }
+                else if (existingColumns[column.Key] != column.Value)
+                {
+                    AlterColumnType(tableName, column.Key, column.Value);
+                }
+            }
+
+            foreach (var column in existingColumns)
+            {
+                if (!entityColumns.ContainsKey(column.Key) && column.Key.ToLower() != "id")
+                {
+                    DropColumn(tableName, column.Key);
+                }
             }
         }
 
-        Logger.Info($"Table '{tableName}' has been updated to match the entity definition.");
+        Logger.Info($"Table '{tableName}' has been successfully migrated to match the entity definition.");
+    }
+
+    /// <summary>
+    /// Determines if a column type can be altered in place without data loss.
+    /// </summary>
+    /// <param name="existingType">The existing PostgreSQL column type.</param>
+    /// <param name="newType">The new PostgreSQL column type.</param>
+    /// <returns>True if the type can be altered in place; otherwise, false.</returns>
+    private bool CanAlterColumnTypeInPlace(string existingType, string newType)
+    {
+        var safeConversions = new Dictionary<string, List<string>>
+        {
+            { "smallint", new List<string> { "integer", "bigint", "decimal", "numeric" } },
+            { "integer", new List<string> { "bigint", "decimal", "numeric" } },
+            { "character varying", new List<string> { "text" } },
+            { "varchar", new List<string> { "text" } },
+            { "real", new List<string> { "double precision" } },
+        };
+
+        existingType = existingType.ToLower();
+        newType = newType.ToLower();
+
+        if (existingType == newType)
+            return true;
+
+        if (safeConversions.ContainsKey(existingType) && safeConversions[existingType].Contains(newType))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Rebuilds a table with its data when schema changes cannot be done in place.
+    /// </summary>
+    /// <param name="entityType">The entity type.</param>
+    /// <param name="tableName">The name of the table.</param>
+    /// <param name="existingColumns">The existing columns in the table.</param>
+    /// <param name="entityColumns">The columns defined in the entity.</param>
+    private void RebuildTableWithData(Type entityType, string tableName, Dictionary<string, string> existingColumns, Dictionary<string, string> entityColumns)
+    {
+        Logger.Info($"Performing full table rebuild for '{tableName}' due to incompatible schema changes.");
+
+        string tempTableName = $"{tableName}_temp_{DateTime.Now.Ticks}";
+
+        var columns = entityType.GetProperties()
+            .Where(p => p.Name != "Id")
+            .Select(p => $"{p.GetCustomAttribute<ColumnAttribute>()?.ColumnName ?? p.Name} {GetPostgresType(p.PropertyType)}");
+
+        var primaryKey = "Id SERIAL PRIMARY KEY";
+        var createSql = $"CREATE TABLE {tempTableName} ({primaryKey}, {string.Join(", ", columns)});";
+
+        try
+        {
+            using (var transaction = _connection.BeginTransaction())
+            {
+                // Create temp table
+                using (var command = new NpgsqlCommand(createSql, _connection, transaction))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                // Identify columns that exist in both tables
+                var commonColumns = existingColumns.Keys
+                    .Where(c => entityColumns.ContainsKey(c) || c.ToLower() == "id")
+                    .ToList();
+
+                // Copy data from old table to new table
+                var copyColumns = string.Join(", ", commonColumns);
+                var copySql = $"INSERT INTO {tempTableName} (id, {copyColumns}) SELECT id, {copyColumns} FROM {tableName};";
+
+                using (var command = new NpgsqlCommand(copySql, _connection, transaction))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                // Drop the old table
+                var dropSql = $"DROP TABLE {tableName};";
+                using (var command = new NpgsqlCommand(dropSql, _connection, transaction))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                // Rename the new table to the original table name
+                var renameSql = $"ALTER TABLE {tempTableName} RENAME TO {tableName};";
+                using (var command = new NpgsqlCommand(renameSql, _connection, transaction))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                var sequenceSql = $"SELECT setval(pg_get_serial_sequence('{tableName}', 'id'), (SELECT MAX(id) FROM {tableName}));";
+                using (var command = new NpgsqlCommand(sequenceSql, _connection, transaction))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                Logger.Info($"Successfully rebuilt table '{tableName}' with migrated data.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Error during table rebuild for '{tableName}': {ex.Message}");
+            throw;
+        }
     }
 
     /// <summary>
@@ -144,7 +269,7 @@ public class DatabaseCtx : IDisposable
     /// <returns>A dictionary of column names and their types.</returns>
     private Dictionary<string, string> GetExistingColumnsWithTypes(string tableName)
     {
-        var columns = new Dictionary<string, string>();
+        var columns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var sql = $"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = @tableName;";
         using (var command = new NpgsqlCommand(sql, _connection))
         {
@@ -160,6 +285,7 @@ public class DatabaseCtx : IDisposable
         return columns;
     }
 
+
     /// <summary>
     /// Gets the columns and their types for a specified entity.
     /// </summary>
@@ -167,14 +293,16 @@ public class DatabaseCtx : IDisposable
     /// <returns>A dictionary of column names and their types.</returns>
     private Dictionary<string, string> GetEntityColumnsWithTypes(Type entityType)
     {
-        return entityType.GetProperties()
-            .Where(p => p.Name != "Id")
-            .ToDictionary(
-                p => p.GetCustomAttribute<ColumnAttribute>()?.ColumnName ?? p.Name,
-                p => GetPostgresType(p.PropertyType)
-            );
+        var columns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    
+        foreach (var prop in entityType.GetProperties().Where(p => p.Name.ToLower() != "id"))
+        {
+            var columnName = prop.GetCustomAttribute<ColumnAttribute>()?.ColumnName ?? prop.Name;
+            columns[columnName] = GetPostgresType(prop.PropertyType);
+        }
+    
+        return columns;
     }
-
 
     /// <summary>
     /// Compares the existing table schema with the entity schema to determine if they are equal.
@@ -184,8 +312,26 @@ public class DatabaseCtx : IDisposable
     /// <returns>True if the schemas are equal; otherwise, false.</returns>
     private bool AreSchemasEqual(Dictionary<string, string> existingColumns, Dictionary<string, string> entityColumns)
     {
-        return existingColumns.Count == entityColumns.Count &&
-               existingColumns.All(ec => entityColumns.ContainsKey(ec.Key) && entityColumns[ec.Key] == ec.Value);
+        var existingDict = new Dictionary<string, string>(existingColumns, StringComparer.OrdinalIgnoreCase);
+        var entityDict = new Dictionary<string, string>(entityColumns, StringComparer.OrdinalIgnoreCase);
+    
+        foreach (var col in entityDict)
+        {
+            if (!existingDict.ContainsKey(col.Key) || 
+                !existingDict[col.Key].Equals(col.Value, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+        foreach (var col in existingDict)
+        {
+            if (col.Key.ToLower() != "id" && !entityDict.ContainsKey(col.Key))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -215,7 +361,7 @@ public class DatabaseCtx : IDisposable
     /// <returns>True if the column exists; otherwise, false.</returns>
     private bool ColumnExists(string tableName, string columnName)
     {
-        var sql = $"SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = @tableName AND column_name = @columnName);";
+        var sql = $"SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = @tableName AND LOWER(column_name) = LOWER(@columnName));";
         using (var command = new NpgsqlCommand(sql, _connection))
         {
             command.Parameters.AddWithValue("@tableName", tableName);
@@ -232,9 +378,17 @@ public class DatabaseCtx : IDisposable
     /// <param name="newType">The new PostgreSQL type for the column.</param>
     private void AlterColumnType(string tableName, string columnName, string newType)
     {
-        var sql = $"ALTER TABLE {tableName} ALTER COLUMN {columnName} TYPE {newType};";
-        ExecuteNonQuery(sql);
-        Logger.Info($"Altered column '{columnName}' in table '{tableName}' to type '{newType}'.");
+        var sql = $"ALTER TABLE {tableName} ALTER COLUMN {columnName} TYPE {newType} USING {columnName}::{newType};";
+        try
+        {
+            ExecuteNonQuery(sql);
+            Logger.Info($"Altered column '{columnName}' in table '{tableName}' to type '{newType}'.");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to alter column type: {ex.Message}");
+            throw;
+        }
     }
 
     /// <summary>
