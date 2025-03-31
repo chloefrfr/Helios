@@ -35,7 +35,7 @@ public class DatabaseCtx : IDisposable
             throw;
         }
     }
-
+    
     /// <summary>
     /// Migrates tables based on the registered entities.
     /// </summary>

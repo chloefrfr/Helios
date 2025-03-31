@@ -12,7 +12,7 @@ namespace Helios
         static void Main(string[] args)
         {
             Constants.dbContext.Initialize();
-     
+            
             var builder = WebApplication.CreateBuilder(args);
             
             ServiceConfiguration.ConfigureServices(builder.Services, builder.Environment);
