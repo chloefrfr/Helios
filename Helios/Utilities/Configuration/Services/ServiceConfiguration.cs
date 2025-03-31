@@ -1,16 +1,22 @@
-﻿using System.Threading.RateLimiting;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Threading.RateLimiting;
+using Helios.Classes.Response;
+using Helios.Utilities.Exceptions;
+using Helios.Utilities.Handlers;
 using Serilog;
 
 namespace Helios.Configuration.Services;
 
 public static class ServiceConfiguration
 {
-    public static void ConfigureServices(IServiceCollection services)
+    public static void ConfigureServices(IServiceCollection services, IWebHostEnvironment env)
     {
         services.AddMemoryCache();
         services.AddControllers();
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
+        
+        services.AddScoped<ApiResponseHandler>();
 
         services.AddLogging(builder => builder.AddSerilog());
 
@@ -44,7 +50,13 @@ public static class ServiceConfiguration
             };
         });
         
-
+        services.Configure<ApiResponseOptions>(options =>
+        {
+            options.ShowDetailedErrors = env.IsDevelopment();
+            options.ErrorCodeMapping.Add(typeof(ValidationException), "VALIDATION_ERROR");
+            options.ErrorCodeMapping.Add(typeof(NotFoundException), "NOT_FOUND");
+        });
+        
         services.AddCors(options =>
         {
             options.AddPolicy("AllowAll", policy =>

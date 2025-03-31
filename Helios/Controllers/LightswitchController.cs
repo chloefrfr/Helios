@@ -1,4 +1,9 @@
 ﻿using Helios.Classes.Endpoints.Lightswitch;
+using Helios.Configuration;
+using Helios.Database.Tables.Account;
+using Helios.Utilities;
+using Helios.Utilities.Errors.HeliosErrors;
+using Helios.Utilities.Tokens;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Helios.Controllers;
@@ -19,6 +24,51 @@ public class LightswitchController : ControllerBase
     [Route("bulk/status")]
     public async Task<IActionResult> GetAsync()
     {
+        if (!Request.Headers.TryGetValue("Authorization", out var authHeader) || string.IsNullOrEmpty(authHeader))
+        {
+            string route = Constants.ExtractSanitiztedRoute(Request.Path);
+            return AuthenticationErrors.AuthenticationFailed(route).AddVariables([authHeader]).Apply(HttpContext);
+        }
+        
+        string token = authHeader.ToString().Replace("bearer eg1~", "");
+        
+        string accountId;
+        try
+        {
+            var decodedToken = TokenGenerator.DecodeToken(token);
+            if (decodedToken == null)
+            {
+                return AuthenticationErrors.InvalidToken("Failed to decode token").Apply(HttpContext);
+            }
+        
+            accountId = decodedToken["sub"] as string;
+            if (string.IsNullOrEmpty(accountId))
+            {
+                return AuthenticationErrors.InvalidToken("Missing subject in token").Apply(HttpContext);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Token decoding error", ex);
+            return AuthenticationErrors.InvalidToken("Failed to decode token").Apply(HttpContext);
+        }
+
+        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        User user = await userRepository.FindAsync(new User
+        {
+            AccountId = accountId
+        });
+
+        if (user == null)
+        {
+            return AccountErrors.AccountNotFound(accountId).WithMessage($"User with id {accountId} not found").Apply(HttpContext);
+        }
+
+        if (user.Banned)
+        {
+            return AccountErrors.DisabledAccount.Apply(HttpContext);
+        }
+        
         return Ok(new List<object>
         {
             new {
