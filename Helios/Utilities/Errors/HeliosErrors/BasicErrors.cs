@@ -10,7 +10,7 @@ public static class BasicErrors
 
     public static ApiError NotFound => new(
         "errors.com.epicgames.basic.notFound",
-        "Not found", Service, 1004, 404);
+        "The resource you were trying to find could not be found.", Service, 1004, 404);
 
     public static ApiError NotAcceptable => new(
         "errors.com.epicgames.basic.notAcceptable",
