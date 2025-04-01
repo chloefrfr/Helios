@@ -10,9 +10,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="933a2f09-5d51-4016-a1f5-d8d301feee49" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/.idea.Helios/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Helios/.idea/workspace.xml" afterDir="false" />
-    </list>
+    <list default="true" id="933a2f09-5d51-4016-a1f5-d8d301feee49" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -148,6 +146,7 @@
       <workItem from="1743207881395" duration="5786000" />
       <workItem from="1743366776709" duration="9485000" />
       <workItem from="1743397032325" duration="25000" />
+      <workItem from="1743436740917" duration="9342000" />
     </task>
     <servers />
   </component>
