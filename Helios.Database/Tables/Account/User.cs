@@ -11,6 +11,7 @@ namespace Helios.Database.Tables.Account
         public int Id { get; set; }
         [Column("username")]
         public string Username { get; set; }
+        [Required]
         [Column("email")] 
         [EmailAddress]
         public string Email { get; set; }
