@@ -14,7 +14,7 @@ public static class InternalErrors
 
     public static ApiError InvalidUserAgent => new(
         "errors.com.epicgames.internal.invalidUserAgent",
-        "Invalid UA", Service, 16183, 400);
+        "Invalid User-Agent", Service, 16183, 400);
 
     public static ApiError ServerError => new(
         "errors.com.epicgames.internal.serverError",
