@@ -10,7 +10,7 @@ public class RequestLoggingMiddleware
     {
         _next = next;
     }
-
+    
     public async Task InvokeAsync(HttpContext context)
     {
         if (context.Request.Path.Equals("/favicon.ico"))
@@ -18,7 +18,7 @@ public class RequestLoggingMiddleware
             await _next(context);
             return;
         }
-        
+    
         var stopwatch = Stopwatch.StartNew();
 
         var method = context.Request.Method;
@@ -30,6 +30,6 @@ public class RequestLoggingMiddleware
 
         var elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
 
-        Logger.Info($"({method}) {path} took {elapsedMilliseconds} ms");
+        Logger.Info($"({method}) {path} took {elapsedMilliseconds} ms with status {context.Response.StatusCode}");
     }
 }

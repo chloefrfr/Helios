@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Threading.RateLimiting;
 using Helios.Classes.Response;
+using Helios.HTTP.Utilities.Extensions;
 using Helios.Utilities.Exceptions;
 using Helios.Utilities.Handlers;
 using Serilog;
@@ -15,6 +16,12 @@ public static class ServiceConfiguration
         services.AddControllers();
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
+        services.AddBodyParser(options =>
+        {
+            options.MaxBufferSize = 2 * 1024 * 1024; 
+            options.UsePooledMemory = true;
+            options.ThrowOnError = true;
+        });
         
         services.AddScoped<ApiResponseHandler>();
 

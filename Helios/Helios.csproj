@@ -19,6 +19,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Helios.Database\Helios.Database.csproj" />
+      <ProjectReference Include="..\Helios.HTTP.Utilities\Helios.HTTP.Utilities.csproj" />
     </ItemGroup>
 
     <ItemGroup>
