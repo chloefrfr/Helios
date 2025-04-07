@@ -6,9 +6,6 @@ namespace Helios.Database.Tables.Account
     [Entity("users")]
     public class User : BaseTable
     {
-        [Key] 
-        [Column("id")] 
-        public int Id { get; set; }
         [Column("username")]
         public string Username { get; set; }
         [Required]
