@@ -16,6 +16,5 @@ public class Tokens : BaseTable
 
     [Column("token")]
     [Required]
-    [Key]
     public string Token { get; set; }
 }

@@ -34,7 +34,7 @@ public class AccessController : ControllerBase
         return Ok("true");
     }
 
-    [HttpPost("enabled_features")]
+    [HttpGet("enabled_features")]
     public IActionResult EnabledFeatures()
     {
         return Ok(new List<object>());
