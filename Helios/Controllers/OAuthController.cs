@@ -1,14 +1,16 @@
-﻿using System.Security.Cryptography;
+﻿using System;
+using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using Helios.Configuration;
 using Helios.Database.Tables.Account;
 using Helios.HTTP.Utilities.Interfaces;
 using Helios.Utilities;
+using Helios.Utilities.Caching;
 using Helios.Utilities.Errors.HeliosErrors;
 using Helios.Utilities.Extensions;
 using Helios.Utilities.Tokens;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 
 namespace Helios.Controllers;
 
@@ -19,10 +21,6 @@ public class OAuthController : ControllerBase
     private readonly IBodyParser _bodyParser;
     private const int AccessTokenLifetimeMinutes = 15;
     private const int RefreshTokenLifetimeDays = 7;
-    
-    private static readonly Dictionary<string, (string Token, DateTime Expiry)> _clientCredentialsCache = 
-        new Dictionary<string, (string, DateTime)>();
-    private static readonly object _cacheLock = new object();
 
     public OAuthController(IBodyParser bodyParser)
     {
@@ -76,7 +74,7 @@ public class OAuthController : ControllerBase
         switch (grantType)
         {
             case "client_credentials":
-                return await HandleClientCredentialsGrantAsync(clientId);
+                return HandleClientCredentialsGrant(clientId);
 
             case "password":
                 return await HandlePasswordGrantAsync(clientId, body);
@@ -86,36 +84,32 @@ public class OAuthController : ControllerBase
         }
     }
 
-    private async Task<IActionResult> HandleClientCredentialsGrantAsync(string clientId)
+    private IActionResult HandleClientCredentialsGrant(string clientId)
     {
-        lock (_cacheLock)
+        string cacheKey = $"client_token:{clientId}";
+
+        if (HeliosFastCache.TryGet<(string Token, DateTime Expiry)>(cacheKey, out var tokenInfo) && 
+            tokenInfo.Expiry > DateTime.UtcNow.AddMinutes(5))
         {
-            if (_clientCredentialsCache.TryGetValue(clientId, out var cachedValue) && 
-                cachedValue.Expiry > DateTime.UtcNow.AddMinutes(5)) 
+            var timeRemaining = (int)(tokenInfo.Expiry - DateTime.UtcNow).TotalSeconds;
+            
+            return Ok(new
             {
-                var timeRemaining = (int)(cachedValue.Expiry - DateTime.UtcNow).TotalSeconds;
-                
-                return Ok(new
-                {
-                    access_token = $"eg1~{cachedValue.Token}",
-                    expires_in = timeRemaining,
-                    expires_at = cachedValue.Expiry.ToIsoUtcString(),
-                    token_type = "bearer",
-                    client_id = clientId,
-                    internal_client = true,
-                    client_service = "fortnite"
-                });
-            }
+                access_token = $"eg1~{tokenInfo.Token}",
+                expires_in = timeRemaining,
+                expires_at = tokenInfo.Expiry.ToIsoUtcString(),
+                token_type = "bearer",
+                client_id = clientId,
+                internal_client = true,
+                client_service = "fortnite"
+            });
         }
         
         var accessToken = TokenGenerator.GenerateToken(Constants.config.JWTClientSecret,
             Constants.config.JWTClientSecret);
         var expiresAt = DateTime.UtcNow.AddMinutes(60);
         
-        lock (_cacheLock)
-        {
-            _clientCredentialsCache[clientId] = (accessToken, expiresAt);
-        }
+        HeliosFastCache.Set(cacheKey, (accessToken, expiresAt), TimeSpan.FromMinutes(60));
 
         return Ok(new
         {
@@ -148,29 +142,32 @@ public class OAuthController : ControllerBase
         var accountId = user.AccountId;
         var now = DateTime.UtcNow;
         
-        var accessTokenTask = TokenUtilities.CreateAccessTokenAsync(clientId, "password", user);
-        var refreshTokenTask = TokenUtilities.CreateRefreshTokenAsync(clientId, user);
+        var requestKey = $"user_token_req:{accountId}";
 
-        _ = Task.Run(async () =>
-        {
-            var tokensRepository = Constants.repositoryPool.GetRepository<Tokens>();
-            await tokensRepository.DeleteAsync(new Tokens { AccountId = accountId, Type = "accesstoken" });
-            await tokensRepository.DeleteAsync(new Tokens { AccountId = accountId, Type = "refreshtoken" });
-        });
-
-        await Task.WhenAll(accessTokenTask, refreshTokenTask);
-        var accessToken = await accessTokenTask;
-        var refreshToken = await refreshTokenTask;
+        var (accessToken, refreshToken) = await Task.Run(() => HeliosFastCache.GetOrAdd<(string, string)>(
+            requestKey,
+            () => {
+                var accessTokenTask = TokenUtilities.CreateAccessTokenAsync(clientId, "password", user);
+                var refreshTokenTask = TokenUtilities.CreateRefreshTokenAsync(clientId, user);
+                
+                Task.WhenAll(accessTokenTask, refreshTokenTask).GetAwaiter().GetResult();
+                
+                CleanupOldTokens(accountId);
+                
+                return (accessTokenTask.Result, refreshTokenTask.Result);
+            },
+            TimeSpan.FromSeconds(5)
+        ));
 
         var deviceId = Request.Headers.TryGetValue("X-Epic-Device-Id", out var rawDeviceId)
             ? rawDeviceId.ToString()
-            : GenerateDeviceId();
+            : Guid.NewGuid().ToString("N");
 
         return Ok(new
         {
             access_token = $"eg1~{accessToken}",
             expires_in = AccessTokenLifetimeMinutes * 60,
-            expires_at = now.AddMinutes(AccessTokenLifetimeMinutes).ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            expires_at = now.AddMinutes(AccessTokenLifetimeMinutes).ToIsoUtcString(),
             token_type = "bearer",
             account_id = accountId,
             client_id = clientId,
@@ -178,16 +175,28 @@ public class OAuthController : ControllerBase
             client_service = "fortnite",
             refresh_token = $"eg1~{refreshToken}",
             refresh_expires = RefreshTokenLifetimeDays * 86400,
-            refresh_expires_at = now.AddDays(RefreshTokenLifetimeDays).ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            refresh_expires_at = now.AddDays(RefreshTokenLifetimeDays).ToIsoUtcString(),
             displayName = user.Username,
             app = "fortnite",
             in_app_id = accountId,
             device_id = deviceId,
         });
     }
-
-    private string GenerateDeviceId()
+    
+    private void CleanupOldTokens(string accountId)
     {
-        return Guid.NewGuid().ToString("N");
+        Task.Run(async () =>
+        {
+            try 
+            {
+                var tokensRepository = Constants.repositoryPool.GetRepository<Tokens>();
+                await tokensRepository.DeleteAsync(new Tokens { AccountId = accountId, Type = "accesstoken" });
+                await tokensRepository.DeleteAsync(new Tokens { AccountId = accountId, Type = "refreshtoken" });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error cleaing up old tokens: {ex.Message}");
+            }
+        });
     }
 }

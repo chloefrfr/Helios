@@ -31,8 +31,4 @@
       </None>
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Utilities\Caching\" />
-    </ItemGroup>
-
 </Project>
