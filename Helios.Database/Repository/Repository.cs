@@ -239,6 +239,30 @@ namespace Helios.Database.Repository
                 return await newConn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
             }
         }
+        
+        public async Task<List<TEntity>> FindManyAsync(TEntity template, int limit = 1000)
+        {
+            var (whereClause, parameters) = BuildFastWhereClause(template);
+
+            var sql = string.IsNullOrEmpty(whereClause)
+                ? $"SELECT {_metadata.AllColumns} FROM {_metadata.TableName} LIMIT {limit}"
+                : $"{_findBaseSql}{whereClause} LIMIT {limit}";
+
+            var conn = GetConnection();
+
+            try
+            {
+                var result = await conn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
+                return result.AsList();
+            }
+            catch
+            {
+                using var newConn = CreateConnection();
+                await newConn.OpenAsync().ConfigureAwait(false);
+                var result = await newConn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
+                return result.AsList();
+            }
+        }
 
         public async Task<int> SaveAsync(TEntity entity, bool returnId = true)
         {

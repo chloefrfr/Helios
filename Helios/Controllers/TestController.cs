@@ -3,6 +3,7 @@ using Helios.Database.Tables.Account;
 using Helios.Utilities;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using Helios.Managers;
 
 namespace Helios.Controllers;
 
@@ -62,6 +63,16 @@ public class TestController : ControllerBase
             };
 
             await userRepository.SaveAsync(user);
+
+            var profiles = new List<string> { "athena", "common_core" };
+            foreach (var profileId in profiles)
+            {
+                var profile = await ProfileManager.CreateProfileAsync(profileId, user.AccountId);
+                if (profile != null)
+                {
+                    Logger.Info($"Successfully created {profileId} profile for account {user.AccountId}");
+                }   
+            }
 
             return Ok(new
             {

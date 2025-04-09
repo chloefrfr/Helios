@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+﻿﻿using System.Collections.Concurrent;
 using System.Reflection;
 using Helios.Database.Attributes;
 using Npgsql;
@@ -211,18 +211,15 @@ public class DatabaseCtx : IDisposable
         {
             using (var transaction = _connection.BeginTransaction())
             {
-                // Create temp table
                 using (var command = new NpgsqlCommand(createSql, _connection, transaction))
                 {
                     command.ExecuteNonQuery();
                 }
 
-                // Identify columns that exist in both tables
                 var commonColumns = existingColumns.Keys
-                    .Where(c => entityColumns.ContainsKey(c) || c.ToLower() == "id")
+                    .Where(c => entityColumns.ContainsKey(c))
                     .ToList();
 
-                // Copy data from old table to new table
                 var copyColumns = string.Join(", ", commonColumns);
                 var copySql = $"INSERT INTO {tempTableName} (id, {copyColumns}) SELECT id, {copyColumns} FROM {tableName};";
 
@@ -231,7 +228,6 @@ public class DatabaseCtx : IDisposable
                     command.ExecuteNonQuery();
                 }
 
-                // Drop the old table
                 var dropSql = $"DROP TABLE {tableName};";
                 using (var command = new NpgsqlCommand(dropSql, _connection, transaction))
                 {

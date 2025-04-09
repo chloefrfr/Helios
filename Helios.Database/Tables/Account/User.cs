@@ -24,9 +24,11 @@ namespace Helios.Database.Tables.Account
         [Column("banned")]
         [Required]
         public bool Banned { get; set; }
-        
         [Column("all_items_granted")]
         [Required]
         public bool AllItemsGranted { get; set; }
+        [Column("lastLogin")]
+        [Required]
+        public string LastLogin { get; set; }
     }
 }

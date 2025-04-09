@@ -3,6 +3,7 @@ using System.Net;
 using Helios.Configuration;
 using Helios.Configuration.Services;
 using Helios.Database.Tables.Account;
+using Helios.Managers;
 using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
 using Helios.Utilities.Middleware;
@@ -12,7 +13,7 @@ namespace Helios
 {
     public class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             Constants.dbContext.Initialize();
             

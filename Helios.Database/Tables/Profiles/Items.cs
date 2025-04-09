@@ -18,6 +18,9 @@ public class Items : BaseTable
     [Column("value")]
     [Required]
     public string Value { get; set; }
+    [Column("isAttribute")]
+    [Required]
+    public bool IsAttribute { get; set; }
     [Column("quantity")]
     [Required]
     public int Quantity { get; set; }
