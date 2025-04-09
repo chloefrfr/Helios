@@ -51,11 +51,11 @@ public static class MCPErrors
 
         public static ApiError OperationNotFound => new(
             "errors.com.epicgames.mcp.operationNotFound",
-            "Operation missing", Service, 16035, 404);
+            "Operation not found", Service, 16035, 404);
 
         public static ApiError InvalidLockerSlotIndex(int index) => new(
             "errors.com.epicgames.mcp.InvalidLockerSlotIndex",
-            "Invalid slot {0}", Service, 16173, 400, index.ToString());
+            "Invalid loadout slot index {0}", Service, 16173, 400, index.ToString());
 
         public static ApiError OutOfBounds(int source, int target) => new(
             "errors.com.epicgames.mcp.outOfBounds",

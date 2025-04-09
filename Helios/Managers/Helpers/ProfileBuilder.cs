@@ -61,12 +61,11 @@ public class ProfileBuilder : MCPProfile
         var parsed = ParseJson(item.Value);
         if (parsed is not JsonElement itemAttributes) return;
 
-        string randomId = Guid.NewGuid().ToString();
         string templateId = item.TemplateId.Contains("loadout", StringComparison.Ordinal)
             ? "CosmeticLocker:cosmeticlocker_athena"
             : item.TemplateId;
 
-        Items[randomId] = new
+        Items[templateId] = new
         {
             attributes = itemAttributes,
             templateId,

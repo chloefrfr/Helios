@@ -9,7 +9,11 @@ public class ApiResponseHandler
 {
     private readonly ApiResponseOptions _options;
     private readonly JsonSerializerOptions _jsonOptions;
-    
+    private static readonly JsonSerializerOptions _errorSerializerOptions = new() 
+    { 
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase 
+    };
+
     public ApiResponseHandler(IOptions<ApiResponseOptions> options)
     {
         _options = options.Value;
@@ -22,10 +26,9 @@ public class ApiResponseHandler
 
     public async Task HandleResponseAsync(HttpContext context, IActionResult result)
     {
-        
         if (context.Response.HasStarted)
         {
-            Logger.Warn("Response has already started, aborting response handling");
+            Logger.Warn("Response already started, aborting handling");
             return;
         }
 
@@ -33,10 +36,9 @@ public class ApiResponseHandler
         {
             var (statusCode, value) = result switch
             {
-                ObjectResult obj => (obj.StatusCode ?? StatusCodes.Status500InternalServerError, obj.Value),
-                JsonResult json => (json.StatusCode ?? StatusCodes.Status400BadRequest, json.Value),
                 ContentResult content => (content.StatusCode ?? StatusCodes.Status200OK, content.Content),
-                StatusCodeResult status => (status.StatusCode, (object)null),
+                ObjectResult obj => (obj.StatusCode ?? StatusCodes.Status200OK, obj.Value),
+                StatusCodeResult status => (status.StatusCode, null),
                 _ => (StatusCodes.Status500InternalServerError, "Unknown result type")
             };
 
@@ -45,46 +47,52 @@ public class ApiResponseHandler
         }
         catch (Exception ex)
         {
-            Logger.Error("Failed to handle API response", ex);
-            await HandleException(context, ex);
+            Logger.Error("Response handling failed", ex);
+            await HandleExceptionAsync(context, ex);
         }
     }
-    
-    public async Task HandleException(HttpContext context, Exception exception)
-    {
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        var error = CreateStandardError(context, exception);
-        await SerializeResponse(context, error);
-    }
 
-    private async Task SerializeResponse(HttpContext context, object value)
+    public async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        context.Response.ContentType = _options.ResponseContentType switch
+        if (context.Response.HasStarted)
         {
-            ResponseContentType.Json => "application/json",
-            ResponseContentType.Xml => "application/xml",
-            _ => "application/json"
-        };
-
-        if (value is string strValue)
-        {
-            await context.Response.WriteAsync(strValue);
+            Logger.Warn("Response already started, aborting error handling");
             return;
         }
 
-        await using var stream = new MemoryStream();
-        await JsonSerializer.SerializeAsync(stream, value, _jsonOptions);
-        stream.Position = 0;
-        await stream.CopyToAsync(context.Response.Body);
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await SerializeResponse(context, CreateStandardError(context, exception));
     }
-    
+
+    private async Task SerializeResponse(HttpContext context, object? value)
+    {
+        context.Response.ContentType = "application/json";
+        
+        try
+        {
+            await JsonSerializer.SerializeAsync(context.Response.Body, value, _jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Response serialization failed", ex);
+            
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                await JsonSerializer.SerializeAsync(
+                    context.Response.Body,
+                    CreateFallbackError(context, ex),
+                    _errorSerializerOptions
+                );
+            }
+        }
+    }
+
     private StandardApiError CreateStandardError(HttpContext context, Exception exception)
     {
         var error = new StandardApiError
         {
-            Code = _options.ErrorCodeMapping.TryGetValue(exception.GetType(), out var code) 
-                ? code 
-                : "UNKNOWN_ERROR",
+            Code = GetErrorCode(exception),
             Message = _options.ShowDetailedErrors ? exception.Message : "An error occurred",
             TraceId = context.TraceIdentifier,
             Timestamp = DateTime.UtcNow
@@ -96,7 +104,24 @@ public class ApiResponseHandler
             error.InnerError = exception.InnerException?.Message;
         }
 
-        Logger.Error($"API Error: {error.Code} - {error.Message}", exception);
+        Logger.Error($"API Error {error.Code}: {error.Message}", exception);
         return error;
+    }
+
+    private StandardApiError CreateFallbackError(HttpContext context, Exception exception) =>
+        new()
+        {
+            Code = "SERIALIZATION_FAILURE",
+            Message = "Failed to process response",
+            TraceId = context.TraceIdentifier,
+            Timestamp = DateTime.UtcNow
+        };
+
+    private string GetErrorCode(Exception exception)
+    {
+        var exceptionType = exception.GetType();
+        return _options.ErrorCodeMapping.TryGetValue(exceptionType, out var code) 
+            ? code 
+            : "UNKNOWN_ERROR";
     }
 }

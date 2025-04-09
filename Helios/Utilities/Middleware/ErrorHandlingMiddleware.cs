@@ -38,7 +38,7 @@ public class ErrorHandlingMiddleware
             }
             catch (Exception ex)
             {
-                await responseHandler.HandleException(context, ex);
+                await responseHandler.HandleExceptionAsync(context, ex);
             }
         }
     }

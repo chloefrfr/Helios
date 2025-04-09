@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Text.Json;
 using Helios.Configuration;
 using Helios.Configuration.Services;
 using Helios.Database.Tables.Account;
@@ -41,17 +42,33 @@ namespace Helios
 
             app.UseStatusCodePages(async context =>
             {
-                var response = context.HttpContext.Response;
-                var requestPath = context.HttpContext.Request.Path.ToString();
+                var http = context.HttpContext;
+                var response = http.Response;
+                var path = http.Request.Path.ToString();
+
+                if (response.HasStarted)
+                    return;
+
+                response.ContentType = "application/json";
 
                 if (response.StatusCode == 404)
                 {
-                    (requestPath.Contains("/fortnite/api/game/v2/profile") ? MCPErrors.OperationNotFound : BasicErrors.NotFound)
-                        .Apply(context.HttpContext);
+        
+                    string operation = path.Contains("/fortnite/api/game/v2/profile")
+                        ? path.Split('/').Last()
+                        : null;
+
+                    var error = operation != null
+                        ? MCPErrors.OperationNotFound.WithMessage($"Operation {operation} not found.")
+                        : BasicErrors.NotFound;
+
+                    await response.WriteAsync(JsonSerializer.Serialize(error.Response));
                 }
                 else if (response.StatusCode == 405)
                 {
-                    BasicErrors.MethodNotAllowed.Apply(context.HttpContext);
+                    var error = BasicErrors.MethodNotAllowed;
+
+                    await response.WriteAsync(JsonSerializer.Serialize(error.Response));
                 }
             });
             

@@ -1,24 +1,19 @@
-﻿using Helios.Classes.MCP;
-using Helios.Configuration;
+﻿using Helios.Configuration;
 using Helios.Database.Tables.Account;
 using Helios.Database.Tables.Profiles;
 using Helios.Managers;
 using Helios.Managers.Helpers;
-using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 
 namespace Helios.Controllers.MCP;
 
 [ApiController]
-[Route("/fortnite/api/game/v2/profile/{accountId}/client/QueryProfile")]
-[Route("/fortnite/api/game/v2/profile/{accountId}/client/ClaimMfaEnabled")]
-[Route("/fortnite/api/game/v2/profile/{accountId}/client/ClientQuestLogin")]
-public class QueryProfileController : ControllerBase
+[Route("/fortnite/api/game/v2/profile/{accountId}/client/SetMtxPlatform")]
+public class SetMtxPlatformController : ControllerBase
 {
     [HttpPost]
-    public async Task<IActionResult> QueryProfile([FromRoute] string accountId, [FromQuery] string profileId)
+    public async Task<IActionResult> SetMtxPlatform([FromRoute] string accountId, [FromQuery] string profileId)
     {
         var userRepository = Constants.repositoryPool.GetRepository<User>();
         var profilesRepository = Constants.repositoryPool.GetRepository<Profiles>();
@@ -30,7 +25,7 @@ public class QueryProfileController : ControllerBase
         
         var user = await userTask;
         var profile = await profileTask;
-        
+
         if (user == null)
         {
             return AccountErrors.AccountNotFound(accountId)
@@ -38,20 +33,6 @@ public class QueryProfileController : ControllerBase
                 .Apply(HttpContext);
         }
         
-        if (DateTime.TryParse(user.LastLogin, out DateTime lastLogin))
-        {
-            if (lastLogin.Date != DateTime.Now.Date)
-            {
-                user.LastLogin = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                await userRepository.UpdateAsync(user);
-            }
-        }
-        else
-        {
-            user.LastLogin = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            await userRepository.UpdateAsync(user);
-        }
-
         if (profile == null && profileId == "common_public")
         {
             var defaultResponse = ProfileResponseManager.Generate(new Profiles
@@ -59,13 +40,7 @@ public class QueryProfileController : ControllerBase
                 AccountId = accountId,
                 ProfileId = "common_public",
                 Revision = 0
-            }, new List<object>
-            {
-                new {
-                    changeType = "fullProfileUpdate",
-                    profile = new DefaultProfileResponse("common_public", accountId)
-                }
-            }, "common_public");
+            }, new List<object> { new DefaultProfileResponse(profileId, accountId) }, "common_public");
             
             return Ok(defaultResponse);
         }
