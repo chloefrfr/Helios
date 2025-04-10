@@ -1,10 +1,24 @@
-﻿using System.Text.RegularExpressions;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using Helios.Classes.UserAgent;
+using Helios.Utilities.Caching;
 
 namespace Helios.Utilities;
 
 public class UserAgentParser
 {
+    private const string CacheKeyPrefix = "UA_PARSE_";
+    
+    private static readonly Regex BuildIdRegex1 = new Regex(@"CL-(\d+)", RegexOptions.Compiled);
+    private static readonly Regex BuildIdRegex2 = new Regex(@"version=\d+\.\d+\.\d+-(\d+)", RegexOptions.Compiled);
+    private static readonly Regex BuildIdRegex3 = new Regex(@"build=(\d+)", RegexOptions.Compiled);
+    private static readonly Regex BuildStringRegex1 = new Regex(@"build=([^\s,]+)", RegexOptions.Compiled);
+    private static readonly Regex BuildStringRegex2 = new Regex(@"\+\+Fortnite\+Release-([^+-]+)", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Parses a user agent string and returns season information with caching
+    /// </summary>
     public static SeasonInfo Parse(string userAgent)
     {
         if (string.IsNullOrEmpty(userAgent))
@@ -13,6 +27,35 @@ public class UserAgentParser
             return null;
         }
 
+        string cacheKey = $"{CacheKeyPrefix}{userAgent.GetHashCode()}";
+
+        return HeliosFastCache.GetOrAdd(cacheKey, () => ParseInternal(userAgent));
+    }
+
+    /// <summary>
+    /// Async version of Parse method
+    /// </summary>
+    public static Task<SeasonInfo> ParseAsync(string userAgent)
+    {
+        if (string.IsNullOrEmpty(userAgent))
+        {
+            Logger.Error("User agent string is null or empty.");
+            return Task.FromResult<SeasonInfo>(null);
+        }
+
+        string cacheKey = $"{CacheKeyPrefix}{userAgent.GetHashCode()}";
+
+        return HeliosFastCache.GetOrAddAsync(cacheKey, async () => 
+        {
+            return ParseInternal(userAgent);
+        });
+    }
+
+    /// <summary>
+    /// Internal parsing logic without caching
+    /// </summary>
+    private static SeasonInfo ParseInternal(string userAgent)
+    {
         string buildId = GetBuildID(userAgent);
         string buildString = GetBuildString(userAgent);
 
@@ -36,13 +79,13 @@ public class UserAgentParser
     /// </summary>
     private static string GetBuildID(string userAgent)
     {
-        var match = Regex.Match(userAgent, @"CL-(\d+)");
+        var match = BuildIdRegex1.Match(userAgent);
         if (match.Success) return match.Groups[1].Value;
 
-        match = Regex.Match(userAgent, @"version=\d+\.\d+\.\d+-(\d+)");
+        match = BuildIdRegex2.Match(userAgent);
         if (match.Success) return match.Groups[1].Value;
 
-        match = Regex.Match(userAgent, @"build=(\d+)");
+        match = BuildIdRegex3.Match(userAgent);
         if (match.Success) return match.Groups[1].Value;
 
         return null;
@@ -53,10 +96,10 @@ public class UserAgentParser
     /// </summary>
     private static string GetBuildString(string userAgent)
     {
-        var match = Regex.Match(userAgent, @"build=([^\s,]+)");
+        var match = BuildStringRegex1.Match(userAgent);
         if (match.Success) return match.Groups[1].Value;
 
-        match = Regex.Match(userAgent, @"\+\+Fortnite\+Release-([^+-]+)");
+        match = BuildStringRegex2.Match(userAgent);
         return match.Success ? match.Groups[1].Value : null;
     }
 
@@ -112,10 +155,12 @@ public class UserAgentParser
         else if (season == 6)
         {
             background = "fortnitemares";
+            lobby = $"Lobby{season}";
         }
         else if (season == 10)
         {
             background = "seasonx";
+            lobby = $"Lobby{season}";
         }
         else
         {
@@ -134,14 +179,11 @@ public class UserAgentParser
         };
     }
 
-
     /// <summary>
     /// Parses the Build String to extract the build number.
     /// </summary>
-    /// <param name="buildString">The build string to parse.</param>
-    /// <returns>The parsed build number.</returns>
     private static int ParseBuildString(string buildString)
     {
-        return (int)(Math.Floor(double.TryParse(buildString, out double build) ? build : 0));
+        return (int)Math.Floor(double.TryParse(buildString, out double build) ? build : 0);
     }
 }
