@@ -10,7 +10,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="933a2f09-5d51-4016-a1f5-d8d301feee49" name="Changes" comment="" />
+    <list default="true" id="933a2f09-5d51-4016-a1f5-d8d301feee49" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.Helios/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Helios/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -64,7 +66,7 @@
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;project.propVCSSupport.DirectoryMappings&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
@@ -148,6 +150,12 @@
       <workItem from="1743397032325" duration="25000" />
       <workItem from="1743436740917" duration="9342000" />
       <workItem from="1743964672573" duration="22406000" />
+      <workItem from="1744221923349" duration="26726000" />
+      <workItem from="1744294310980" duration="43000" />
+      <workItem from="1744294436866" duration="39000" />
+      <workItem from="1744294594793" duration="28000" />
+      <workItem from="1744294705707" duration="47000" />
+      <workItem from="1744294879548" duration="1336000" />
     </task>
     <servers />
   </component>
