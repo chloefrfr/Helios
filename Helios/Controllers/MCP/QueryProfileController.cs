@@ -28,7 +28,7 @@ public class QueryProfileController : ControllerBase
         if (userAgent is null)
             return InternalErrors.InvalidUserAgent.Apply(HttpContext);
 
-        if (profileId is null || accountId is null)
+        if (string.IsNullOrEmpty(profileId) || string.IsNullOrEmpty(accountId))
             return MCPErrors.InvalidPayload.Apply(HttpContext);
 
         var parsedUserAgent = UserAgentParser.Parse(userAgent);
