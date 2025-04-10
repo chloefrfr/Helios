@@ -131,9 +131,10 @@ public static class ProfileManager
         {
             var profileRepository = Constants.repositoryPool.GetRepository<Profiles>();
             
-            profile.Revision++;
-            
-            await profileRepository.SaveAsync(profile);
+            await profileRepository.UpdateAsync(new Profiles
+            {
+                Revision = profile.Revision + 1
+            });
             
             string cacheKey = $"profile_{profile.AccountId}_{profile.ProfileId}";
             HeliosFastCache.Set(cacheKey, profile, _defaultCacheExpiration);

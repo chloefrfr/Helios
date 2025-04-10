@@ -78,15 +78,17 @@ public class AccountController : ControllerBase
             return AccountErrors.DisabledAccount.Apply(HttpContext);
         }
 
-        return Ok(new
+        return Ok(new List<object>
         {
-            id = user.AccountId,
-            displayName = user.Username,
-            cabinedMode = false,
-            externalAuth = new object { }
+            new {
+                id = user.AccountId,
+                displayName = user.Username,
+                cabinedMode = false,
+                externalAuth = new object { }
+            }
         });
     }
-
+    
     [HttpGet("displayName/{username}")]
     public async Task<IActionResult> FindByDisplayName([FromRoute] string username)
     {

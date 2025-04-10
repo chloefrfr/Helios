@@ -80,7 +80,45 @@ public class ProfileBuilder : MCPProfile
         var parsed = ParseJson(item.Value);
         if (parsed is not JsonElement parsedAttribute) return;
 
-        Stats.attributes[item.TemplateId] = parsedAttribute;
+        var fixedAttribute = FixNumericStrings(parsedAttribute); // fixes season_num being a string
+        Stats.attributes[item.TemplateId] = fixedAttribute;
+    }
+    
+    private JsonElement FixNumericStrings(JsonElement element)
+    {
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(FixNumbers(element)));
+        return doc.RootElement.Clone();
+    }
+    
+    private object FixNumbers(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Object => element.EnumerateObject().ToDictionary(
+                prop => prop.Name,
+                prop => FixNumbers(prop.Value)
+            ),
+            JsonValueKind.Array => element.EnumerateArray().Select(FixNumbers).ToList(),
+            JsonValueKind.String => TryParseNumeric(element.GetString(), out var num) ? num : element.GetString(),
+            _ => element.Clone()
+        };
+    }
+
+    private bool TryParseNumeric(string? str, out object number)
+    {
+        if (int.TryParse(str, out var intVal))
+        {
+            number = intVal;
+            return true;
+        }
+        if (double.TryParse(str, out var doubleVal))
+        {
+            number = doubleVal;
+            return true;
+        }
+
+        number = str!;
+        return false;
     }
 
     private static JsonElement? ParseJson(string json)
