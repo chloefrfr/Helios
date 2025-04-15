@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+﻿﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using Helios.Classes.MCP;
 using Helios.Classes.Caching;
@@ -54,21 +54,39 @@ public class ProfileBuilder : MCPProfile
         }
     }
 
+
     private void HandleItem(Items item)
     {
         if (string.IsNullOrEmpty(item.Value)) return;
 
         var parsed = ParseJson(item.Value);
-        if (parsed is not JsonElement itemAttributes) return;
+    
+        if (!parsed.HasValue) 
+        {
+            string templateId = item.TemplateId.Contains("loadout", StringComparison.Ordinal)
+                ? "CosmeticLocker:cosmeticlocker_athena"
+                : item.TemplateId;
 
-        string templateId = item.TemplateId.Contains("loadout", StringComparison.Ordinal)
+            using var doc = JsonDocument.Parse("{}");
+            var attributes = doc.RootElement.Clone();
+        
+            Items[templateId] = new
+            {
+                attributes,
+                templateId,
+                quantity = item.Quantity
+            };
+            return;
+        }
+
+        string itemTemplateId = item.TemplateId.Contains("loadout", StringComparison.Ordinal)
             ? "CosmeticLocker:cosmeticlocker_athena"
             : item.TemplateId;
 
-        Items[templateId] = new
+        Items[itemTemplateId] = new
         {
-            attributes = itemAttributes,
-            templateId,
+            attributes = parsed.Value,
+            templateId = itemTemplateId,
             quantity = item.Quantity
         };
     }
@@ -78,9 +96,8 @@ public class ProfileBuilder : MCPProfile
         if (string.IsNullOrEmpty(item.Value)) return;
 
         var parsed = ParseJson(item.Value);
-        if (parsed is not JsonElement parsedAttribute) return;
-
-        var fixedAttribute = FixNumericStrings(parsedAttribute); // fixes season_num being a string
+        if (!parsed.HasValue) return; 
+        var fixedAttribute = FixNumericStrings(parsed.Value); // fixes season_num being a string
         Stats.attributes[item.TemplateId] = fixedAttribute;
     }
     
@@ -133,12 +150,12 @@ public class ProfileBuilder : MCPProfile
         {
             try
             {
-                return JsonSerializer.Deserialize<JsonElement>(json);
+                using var doc = JsonDocument.Parse(json);
+                return doc.RootElement.Clone();
             }
             catch (JsonException ex)
             {
-                Logger.Error($"Error deserializing JSON: {ex.Message} for input: {json}");
-                return new JsonElement();
+                return (JsonElement?)null;
             }
         }, TimeSpan.FromMinutes(30));
     }
