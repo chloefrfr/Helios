@@ -10,4 +10,8 @@ public class ConfigTypes
     public string DatabaseConnectionUrl { get; set; }
     [XmlElement("JWTClientSecret")]
     public string JWTClientSecret { get; set; }
+    [XmlElement("GameDirectory")]
+    public string GameDirectory { get; set; }
+    [XmlElement("CurrentVersion")]
+    public string CurrentVersion { get; set; }
 }

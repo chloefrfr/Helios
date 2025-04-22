@@ -5,6 +5,8 @@
             <xs:sequence>
                 <xs:element name="DatabaseConnectionUrl" type="xs:string"/>
                 <xs:element name="JWTClientSecret" type="xs:string"/>
+                <xs:element name="GameDirectory" type="xs:string" />
+                <xs:element name="CurrentVersion" type="xs:string" />
             </xs:sequence>
         </xs:complexType>
     </xs:element>

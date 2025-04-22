@@ -2,6 +2,7 @@
 using System.Threading.RateLimiting;
 using Helios.Classes.Response;
 using Helios.HTTP.Utilities.Extensions;
+using Helios.Managers.Unreal;
 using Helios.Utilities.Exceptions;
 using Helios.Utilities.Handlers;
 using Serilog;
@@ -73,6 +74,8 @@ public static class ServiceConfiguration
                     .AllowAnyHeader();
             });
         });
+
+        services.AddSingleton<UnrealAssetProvider>();
     }
 
     public static void ConfigureLogging(IServiceCollection services)

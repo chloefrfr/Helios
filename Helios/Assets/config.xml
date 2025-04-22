@@ -2,4 +2,6 @@
 <config xmlns="http://fortmp.dev/config">
     <DatabaseConnectionUrl>Host=localhost;Port=5432;Database=helios;Username=postgres;Password=3573</DatabaseConnectionUrl>
     <JWTClientSecret>test123</JWTClientSecret>
+    <GameDirectory>F:\\skies\builds\\14.40\\FortniteGame\\Content\\Paks</GameDirectory>
+    <CurrentVersion>14.40</CurrentVersion>
 </config>

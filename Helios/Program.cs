@@ -5,6 +5,7 @@ using Helios.Configuration;
 using Helios.Configuration.Services;
 using Helios.Database.Tables.Account;
 using Helios.Managers;
+using Helios.Managers.Unreal;
 using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
 using Helios.Utilities.Middleware;
@@ -26,6 +27,16 @@ namespace Helios
             
             var app = builder.Build();
 
+            try
+            {
+                var assetProvider = app.Services.GetRequiredService<UnrealAssetProvider>();
+                await assetProvider.InitializeAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to initialize UnrealAssetProvider: {ex}");
+            }
+            
             app.UseCors("AllowAll");
             app.UseHttpsRedirection();
             app.UseAuthorization();
