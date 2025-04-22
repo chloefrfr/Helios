@@ -31,6 +31,7 @@ namespace Helios
             {
                 var assetProvider = app.Services.GetRequiredService<UnrealAssetProvider>();
                 await assetProvider.InitializeAsync();
+                await assetProvider.LoadAllCosmeticsAsync();
             }
             catch (Exception ex)
             {
