@@ -5,6 +5,7 @@ using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 using Helios.Configuration;
 using Helios.Utilities;
+using Helios.Utilities.Caching;
 
 namespace Helios.Managers.Unreal;
 
@@ -120,9 +121,102 @@ public class UnrealAssetProvider : IDisposable
             throw new UnauthorizedAccessException($"Access denied to game directory: {gameDirectory}");
         }
     }
+    
+     public async Task<IReadOnlyList<string>> LoadAssetsFromPathAsync(
+            string path,
+            bool forceRefresh = false,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureInitialized();
+            
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                Logger.Warn("Provided path is null or empty");
+                return Array.Empty<string>();
+            }
+
+            string cacheKey = $"assets_path_{path}";
+            
+            if (forceRefresh)
+            {
+                HeliosFastCache.Remove(cacheKey);
+            }
+
+            return await HeliosFastCache.GetOrAddAsync<IReadOnlyList<string>>(
+                cacheKey,
+                async () =>
+                {
+                    try
+                    {
+                        var stopwatch = Stopwatch.StartNew();
+                        
+                        var assetFiles = await Task.Run(() =>
+                        {
+                            return FileProvider.Files
+                                .AsParallel()
+                                .Where(file => file.Key.StartsWith(path, StringComparison.OrdinalIgnoreCase) && 
+                                              file.Key.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                                .Select(file => file.Key)
+                                .ToList();
+                        }, cancellationToken);
+
+                        stopwatch.Stop();
+                        
+                        Logger.Debug($"Loaded {assetFiles.Count} assets from path '{path}' in {stopwatch.ElapsedMilliseconds}ms");
+                        
+                        return assetFiles;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Logger.Info("Asset loading operation was canceled");
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"Error loading assets from path '{path}': {ex}");
+                        return Array.Empty<string>();
+                    }
+                },
+                TimeSpan.FromHours(1) 
+            );
+        }
+    
+    public async Task<IReadOnlyList<string>> LoadAllCosmeticsAsync(
+        bool forceRefresh = false,
+        CancellationToken cancellationToken = default)
+    {
+        const string cosmeticsPath = "FortniteGame/Content/Athena/Items/Cosmetics";
+            
+        if (forceRefresh)
+        {
+            HeliosFastCache.Remove(COSMETICS_CACHE_KEY);
+        }
+
+        return await HeliosFastCache.GetOrAddAsync<IReadOnlyList<string>>(
+            COSMETICS_CACHE_KEY,
+            async () => await LoadAssetsFromPathAsync(cosmeticsPath, false, cancellationToken),
+            TimeSpan.FromHours(2) 
+        );
+    }
+    
+    private void EnsureInitialized()
+    {
+        if (!_isInitialized || FileProvider == null)
+        {
+            throw new InvalidOperationException("UnrealAssetProvider is not initialized. Call InitializeAsync first.");
+        }
+    }
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _initializationLock?.Dispose();
+        FileProvider?.Dispose();
+            
+        _isDisposed = true;
     }
 }
