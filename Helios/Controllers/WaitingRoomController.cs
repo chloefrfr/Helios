@@ -8,11 +8,12 @@ public class WaitingRoomController : ControllerBase
     [HttpGet("/waitingroom/api/waitingroom")]
     public IActionResult WaitingRoom()
     {
-        return Ok(new
-        {
-            retryTime = 4,
-            expectedWait = 4
-        });
+        // return Ok(new
+        // {
+        //     retryTime = 4,
+        //     expectedWait = 4
+        // });
+        return NoContent();
     }
 
     [HttpGet("/launcher-resources/waitingroom/Fortnite/retryconfig.json")]

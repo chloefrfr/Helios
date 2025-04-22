@@ -42,14 +42,16 @@ public class QueryProfileController : ControllerBase
         await Task.WhenAll(userTask, profileTask);
         var user = await userTask;
         var profile = await profileTask;
+        
+        Logger.Debug($"Requested ProfileId: {profileId}");
 
         if (user is null) return AccountErrors.AccountNotFound(accountId).Apply(HttpContext);
-        if (profileId == "common_public")
+        if (profileId == "common_public" || profileId == "collections" || profileId == "creative")
         {
             UpdateLastLoginIfNeeded(user, now);
             await userRepository.UpdateAsync(user);
 
-            return Ok(GenerateDefaultPublicProfile(accountId));
+            return Ok(GenerateDefaultPublicProfile(accountId, profileId));
         }
         
         UpdateLastLoginIfNeeded(user, now);
@@ -84,10 +86,10 @@ public class QueryProfileController : ControllerBase
         }
     }
 
-    private static object GenerateDefaultPublicProfile(string accountId) => new
+    private static object GenerateDefaultPublicProfile(string accountId, string profileId) => new
     {
         profileRevision = 0,
-        profileId = "common_public",
+        profileId,
         profileChanges = new[]
         {
             new
@@ -121,12 +123,29 @@ public class QueryProfileController : ControllerBase
                 try
                 {
                     var jsonElement = JsonSerializer.Deserialize<JsonElement>(item.Value);
-                    var currentValue = jsonElement.GetString();
+                
+                    string currentValue;
+                    if (jsonElement.ValueKind == JsonValueKind.Number)
+                    {
+                        currentValue = jsonElement.GetInt32().ToString();
+                    }
+                    else
+                    {
+                        currentValue = jsonElement.GetString();
+                    }
 
                     if (currentValue == season)
                         return Task.CompletedTask;
 
-                    item.Value = JsonSerializer.Serialize(season);
+                    if (int.TryParse(season, out int seasonNum))
+                    {
+                        item.Value = JsonSerializer.Serialize(seasonNum);
+                    }
+                    else
+                    {
+                        item.Value = JsonSerializer.Serialize(season);
+                    }
+                
                     return repository.UpdateAsync(item);
                 }
                 catch (Exception ex)

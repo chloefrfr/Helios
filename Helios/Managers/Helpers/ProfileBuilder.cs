@@ -70,7 +70,7 @@ public class ProfileBuilder : MCPProfile
             using var doc = JsonDocument.Parse("{}");
             var attributes = doc.RootElement.Clone();
         
-            Items[templateId] = new
+            Items[item.TemplateId] = new
             {
                 attributes,
                 templateId,
@@ -83,7 +83,7 @@ public class ProfileBuilder : MCPProfile
             ? "CosmeticLocker:cosmeticlocker_athena"
             : item.TemplateId;
 
-        Items[itemTemplateId] = new
+        Items[item.TemplateId] = new
         {
             attributes = parsed.Value,
             templateId = itemTemplateId,

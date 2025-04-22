@@ -148,21 +148,6 @@ public static class ProfileManager
             return false;
         }
     }
-    
-    public static void RegisterProfileTypeInitializer(string profileType, Func<string, List<Items>> initializer)
-    {
-        if (string.IsNullOrWhiteSpace(profileType))
-        {
-            throw new ArgumentException("Profile type cannot be null or empty", nameof(profileType));
-        }
-        
-        if (initializer == null)
-        {
-            throw new ArgumentNullException(nameof(initializer));
-        }
-        
-        _profileTypeInitializers[profileType] = initializer;
-    }
 
     private static List<Items> CreateCommonCoreItems(string accountId)
     {
@@ -180,13 +165,14 @@ public static class ProfileManager
         items.Add(ProfileItemCreator.CreateItem("athena", accountId, "AthenaGlider:DefaultGlider"));
         items.Add(ProfileItemCreator.CreateItem("athena", accountId, "AthenaDance:EID_DanceMoves"));
         items.Add(ProfileItemCreator.CreateItem("athena", accountId, "AthenaCharacter:CID_001_Athena_Commando_F_Default"));
+        items.Add(ProfileItemCreator.CreateLoadoutItem("athena", accountId, "fortniteloadout1"));
             
         var statItems = new Dictionary<string, object>
         {
             ["use_random_loadout"] = false,
             ["past_seasons"] = new List<PastSeasons>(),
             ["season_match_boost"] = 0,
-            ["loadouts"] = new List<string>(),
+            ["loadouts"] = new List<string> { "fortniteloadout1" },
             ["mfa_reward_claimed"] = false,
             ["rested_xp_overflow"] = 0,
             ["current_mtx_platform"] = "Epic",

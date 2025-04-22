@@ -488,27 +488,29 @@ namespace Helios.Database.Repository
             
             return value.Equals(Activator.CreateInstance(type));
         }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private object ConvertValue(object value)
         {
             if (value == null) return null;
-            
+
             var type = value.GetType();
-            
+
             if (type.IsEnum)
                 return Convert.ToInt32(value);
-            
+
+            if (type.IsArray)
+                return value;
+
             if (value is System.Collections.IEnumerable enumerable && type != typeof(string))
             {
                 return JsonConvert.SerializeObject(enumerable);
             }
-            
+
             if (type.Namespace?.StartsWith("Helios.Database.Tables") == true)
             {
                 return JsonConvert.SerializeObject(value);
             }
-            
+
             return value;
         }
 

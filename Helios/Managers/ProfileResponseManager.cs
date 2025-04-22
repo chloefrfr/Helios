@@ -7,16 +7,17 @@ namespace Helios.Managers;
 
 public class ProfileResponseManager
 {
-    private static string GetCacheKey(string accountId, string profileId, int revision) => $"profile_response_{accountId}_{profileId}_{revision}";
-    private static readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(5);
+    // private static string GetCacheKey(string accountId, string profileId, int revision) => $"profile_response_{accountId}_{profileId}_{revision}";
+    // private static readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(5);
     
     public static BaseMCPResponse Generate(Profiles profile, IEnumerable<object> changes, string profileId)
     {
-        string cacheKey = GetCacheKey(profile.AccountId, profileId, profile.Revision);
-        
-        return HeliosFastCache.GetOrAdd(cacheKey, 
-            () => GenerateBaseResponse(profile, changes.ToList(), profileId),
-            _cacheExpiration);
+        //
+        // return HeliosFastCache.GetOrAdd(cacheKey, 
+        //     () => GenerateBaseResponse(profile, changes.ToList(), profileId),
+        //     _cacheExpiration);
+
+        return GenerateBaseResponse(profile, changes.ToList(), profileId); 
     }
     
     private static BaseMCPResponse GenerateBaseResponse(Profiles profile, List<object> changes, string profileId)

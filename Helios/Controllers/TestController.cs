@@ -3,6 +3,7 @@ using Helios.Database.Tables.Account;
 using Helios.Utilities;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using Helios.Database.Tables.Profiles;
 using Helios.Managers;
 
 namespace Helios.Controllers;
@@ -42,6 +43,7 @@ public class TestController : ControllerBase
         }
 
         var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var loadoutsRepository = Constants.repositoryPool.GetRepository<Loadouts>();
 
         if (await userRepository.FindAsync(new User { Username = body.Username }) is not null)
         {
@@ -73,6 +75,25 @@ public class TestController : ControllerBase
                     Logger.Info($"Successfully created {profileId} profile for account {user.AccountId}");
                 }   
             }
+            
+            await loadoutsRepository.SaveAsync(new Loadouts
+            {
+                AccountId = user.AccountId,
+                ProfileId = "athena",
+                TemplateId = "CosmeticLocker:cosmeticlocker_athena",
+                LockerName = "fortniteloadout1",
+                BannerId = "",
+                BannerColorId = "",
+                CharacterId = "AthenaCharacter:CID_001_Athena_Commando_F_Default",
+                BackpackId = "",
+                GliderId = "AthenaGlider:DefaultGlider",
+                DanceId = new string[6] { "", "", "", "", "", "" },
+                PickaxeId = "AthenaPickaxe:DefaultPickaxe",
+                ItemWrapId = new string[7] { "", "", "", "", "", "", "" },
+                ContrailId = "",
+                LoadingScreenId = "",
+                MusicPackId = ""
+            });
 
             return Ok(new
             {
