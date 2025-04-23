@@ -15,79 +15,70 @@ namespace Helios
 {
     public class Program
     {
-        static async Task Main(string[] args)
+       static async Task Main(string[] args)
         {
             Constants.dbContext.Initialize();
-            
+
             var builder = WebApplication.CreateBuilder(args);
-            
+
             ServiceConfiguration.ConfigureServices(builder.Services, builder.Environment);
             LoggingConfiguration.ConfigureLogging(builder.Logging, builder.Configuration);
             WebhostConfiguration.ConfigureWebhosts(builder.WebHost);
-            
+
             var app = builder.Build();
 
             try
             {
-                var assetProvider = app.Services.GetRequiredService<UnrealAssetProvider>();
-                await assetProvider.InitializeAsync();
-                await assetProvider.LoadAllCosmeticsAsync();
+                Constants.FileProvider = app.Services.GetRequiredService<UnrealAssetProvider>();
+                await Constants.FileProvider.InitializeAsync();
+                await Constants.FileProvider.LoadAllCosmeticsAsync(CancellationToken.None);
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to initialize UnrealAssetProvider: {ex}");
+                Logger.Error($"[UnrealAssetProvider] Initialization failed: {ex}");
             }
-            
-            app.UseCors("AllowAll");
-            app.UseHttpsRedirection();
-            app.UseAuthorization();
-            
-            app.MapControllers();
-            app.UseHttpsRedirection();
+
             app.UseMiddleware<RequestLoggingMiddleware>();
             app.UseMiddleware<ErrorHandlingMiddleware>();
-            app.UseExceptionHandler(err => err.Run(async context =>
+
+            app.UseExceptionHandler(appBuilder => appBuilder.Run(async context =>
             {
                 context.Response.StatusCode = 500;
-                InternalErrors.ServerError.Apply(context);
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(InternalErrors.ServerError.Response));
             }));
 
             app.UseStatusCodePages(async context =>
             {
                 var http = context.HttpContext;
+                var path = http.Request.Path;
                 var response = http.Response;
-                var path = http.Request.Path.ToString();
 
-                if (response.HasStarted)
-                    return;
+                if (response.HasStarted) return;
 
                 response.ContentType = "application/json";
 
-                if (response.StatusCode == 404)
+                object error = response.StatusCode switch
                 {
-        
-                    string operation = path.Contains("/fortnite/api/game/v2/profile")
-                        ? path.Split('/').Last()
-                        : null;
+                    404 => path.ToString().Contains("/fortnite/api/game/v2/profile") && path.HasValue
+                        ? MCPErrors.OperationNotFound.WithMessage($"Operation {path.Value.Split('/').Last()} not found.").Response
+                        : BasicErrors.NotFound.Response,
+                    405 => BasicErrors.MethodNotAllowed.Response,
+                    _ => null
+                };
 
-                    var error = operation != null
-                        ? MCPErrors.OperationNotFound.WithMessage($"Operation {operation} not found.")
-                        : BasicErrors.NotFound;
-
-                    await response.WriteAsync(JsonSerializer.Serialize(error.Response));
-                }
-                else if (response.StatusCode == 405)
-                {
-                    var error = BasicErrors.MethodNotAllowed;
-
-                    await response.WriteAsync(JsonSerializer.Serialize(error.Response));
-                }
+                if (error != null)
+                    await response.WriteAsync(JsonSerializer.Serialize(error));
             });
-            
-            var address = builder.Configuration["ASPNETCORE_URLS"];
-            Logger.Info($"Helios is running on: {address}");
 
-            app.Run();
+            app.UseHttpsRedirection();
+            app.UseCors("AllowAll");
+            app.UseAuthorization();
+            app.MapControllers();
+
+            Logger.Info($"Helios is running on: {builder.Configuration["ASPNETCORE_URLS"]}");
+
+            await app.RunAsync();
         }
     }
 }

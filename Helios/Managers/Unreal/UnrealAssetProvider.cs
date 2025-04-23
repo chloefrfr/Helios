@@ -1,27 +1,31 @@
 ﻿using System.Diagnostics;
+using CUE4Parse.Compression;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
+using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
+using Helios.Classes.HTTP;
 using Helios.Configuration;
 using Helios.Utilities;
 using Helios.Utilities.Caching;
+using Newtonsoft.Json;
 
 namespace Helios.Managers.Unreal;
 
 public class UnrealAssetProvider : IDisposable
 {
-    private readonly SemaphoreSlim _initializationLock = new  SemaphoreSlim(1, 1);
+    private readonly SemaphoreSlim _initializationLock = new SemaphoreSlim(1, 1);
     private bool _isInitialized;
     private bool _isDisposed;
-
-    private const string COSMETICS_CACHE_KEY = "cosmetic_assets";
     
     public DefaultFileProvider FileProvider { get; private set; }
 
     public UnrealAssetProvider()
     {
-        
+        string DataPath = $"{Directory.GetCurrentDirectory()}\\.data";
+        if (!Directory.Exists(DataPath))
+            Directory.CreateDirectory(DataPath);
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -31,7 +35,7 @@ public class UnrealAssetProvider : IDisposable
             Logger.Debug($"Provider already initialized, skipping initialization");
             return;
         }
-        
+
         await _initializationLock.WaitAsync(cancellationToken);
 
         try
@@ -44,14 +48,11 @@ public class UnrealAssetProvider : IDisposable
             
             FileProvider = new DefaultFileProvider(
                 Constants.config.GameDirectory,
-                SearchOption.AllDirectories,
+                SearchOption.TopDirectoryOnly,
                 true,
                 new VersionContainer(EGame.GAME_UE4_LATEST));
             
-            await Task.WhenAll(
-                Task.Run(() => FileProvider.Initialize(), cancellationToken)
-                // Task.Run(() => FileProvider.LoadLocalization(), cancellationToken)
-            );
+           FileProvider.Initialize();
 
             var version = FVersionConverter.Convert(Constants.config.CurrentVersion);
             var aesKey = FAesProvider.GetAesKey(version);
@@ -67,18 +68,29 @@ public class UnrealAssetProvider : IDisposable
             };
 
             await FileProvider.SubmitKeysAsync(aesKeys, cancellationToken);
+            string DataPath = $"{Directory.GetCurrentDirectory()}\\.data";
+            
+            var oodlePath = Path.Combine(DataPath, OodleHelper.OODLE_DLL_NAME);
+            if (File.Exists(OodleHelper.OODLE_DLL_NAME))
+            {
+                File.Move(OodleHelper.OODLE_DLL_NAME, oodlePath, true);
+            }
+            else if (!File.Exists(oodlePath))
+            {
+                await OodleHelper.DownloadOodleDllAsync(oodlePath);
+            }
+
+            OodleHelper.Initialize(oodlePath);
+
+            var mappings = await GetMappings();
+            FileProvider.MappingsContainer = mappings;
             
             string keyTxt = FileProvider.Keys.Count == 1 ? "key" : "keys";
             Logger.Info($"Provider initialized with " +
                         $"with {FileProvider.Keys.Count} {keyTxt}. Version {Constants.config.CurrentVersion}");
             
-            foreach (var vfs in FileProvider.MountedVfs)
-            {
-                Logger.Info($"Successfully mounted file '{vfs.Name}'");
-            }
-            
             _isInitialized = true;
-        }   
+        }
         catch (FileNotFoundException ex)
         {
             Logger.Error($"File not found: {ex.FileName}");
@@ -99,7 +111,27 @@ public class UnrealAssetProvider : IDisposable
             _initializationLock.Release();
         }
     }
+    
+    private async Task<FileUsmapTypeMappingsProvider> GetMappings()
+    {
+        var mappingsData = JsonConvert.DeserializeObject<List<MappingsResponse>>(await new HttpClient().GetStringAsync("https://fortnitecentral.genxgames.gg/api/v1/mappings"))[0];
+        string DataPath = $"{Directory.GetCurrentDirectory()}\\.data";
+        
+        var path = Path.Combine(DataPath, mappingsData.FileName);
+        if (!File.Exists(path))
+        {
+            Logger.Info($"Cant find latest mappings, Downloading {mappingsData.Url}");
 
+            var bytes = await new HttpClient().GetByteArrayAsync(mappingsData.Url);
+            await File.WriteAllBytesAsync(path, bytes);
+        }
+
+        var latestUsmapInfo = new DirectoryInfo(DataPath).GetFiles("*_oo.usmap").FirstOrDefault(x => x.Name == mappingsData.FileName);
+
+        Logger.Info(latestUsmapInfo != null ? $"Mappings Pulled from file: {latestUsmapInfo.Name}" : "Could not find mappings!");
+
+        return new FileUsmapTypeMappingsProvider(latestUsmapInfo!.FullName);
+    }
     private void ValidateGameDirectory(string gameDirectory)
     {
         if (string.IsNullOrWhiteSpace(gameDirectory))
@@ -121,90 +153,64 @@ public class UnrealAssetProvider : IDisposable
             throw new UnauthorizedAccessException($"Access denied to game directory: {gameDirectory}");
         }
     }
-    
-     public async Task<IReadOnlyList<string>> LoadAssetsFromPathAsync(
-            string path,
-            bool forceRefresh = false,
-            CancellationToken cancellationToken = default)
-        {
-            EnsureInitialized();
-            
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                Logger.Warn("Provided path is null or empty");
-                return Array.Empty<string>();
-            }
 
-            string cacheKey = $"assets_path_{path}";
-            
-            if (forceRefresh)
-            {
-                HeliosFastCache.Remove(cacheKey);
-            }
-
-            return await HeliosFastCache.GetOrAddAsync<IReadOnlyList<string>>(
-                cacheKey,
-                async () =>
-                {
-                    try
-                    {
-                        var stopwatch = Stopwatch.StartNew();
-                        
-                        var assetFiles = await Task.Run(() =>
-                        {
-                            return FileProvider.Files
-                                .AsParallel()
-                                .Where(file => file.Key.StartsWith(path, StringComparison.OrdinalIgnoreCase) && 
-                                              file.Key.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
-                                .Select(file => file.Key)
-                                .ToList();
-                        }, cancellationToken);
-
-                        stopwatch.Stop();
-                        
-                        Logger.Debug($"Loaded {assetFiles.Count} assets from path '{path}' in {stopwatch.ElapsedMilliseconds}ms");
-                        
-                        return assetFiles;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        Logger.Info("Asset loading operation was canceled");
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error($"Error loading assets from path '{path}': {ex}");
-                        return Array.Empty<string>();
-                    }
-                },
-                TimeSpan.FromHours(1) 
-            );
-        }
-    
-    public async Task<IReadOnlyList<string>> LoadAllCosmeticsAsync(
-        bool forceRefresh = false,
-        CancellationToken cancellationToken = default)
+    public async Task<List<string>> LoadAllCosmeticsAsync(CancellationToken cancellationToken)
     {
+        if (FileProvider == null) return new List<string>();
         const string cosmeticsPath = "FortniteGame/Content/Athena/Items/Cosmetics";
-            
-        if (forceRefresh)
+
+        if (HeliosFastCache.TryGet<List<string>>(cosmeticsPath, out var cachedCosmetics))
+            return cachedCosmetics;
+
+        var cosmetics = new List<string>();
+        var stopwatch = Stopwatch.StartNew();
+
+        try
         {
-            HeliosFastCache.Remove(COSMETICS_CACHE_KEY);
+            await foreach (var batch in HandleFilesInBatchesAsync(cosmeticsPath)
+                               .WithCancellation(cancellationToken))
+            {
+                cosmetics.AddRange(batch);
+            }
+
+            HeliosFastCache.Set(cosmeticsPath, cosmetics);
+            stopwatch.Stop();
+            Logger.Info($"Loaded {cosmetics.Count} cosmetics in {stopwatch.ElapsedMilliseconds} ms.");
+
+            return cosmetics;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Error loading cosmetics: {ex.Message}");
+            return new List<string>();
+        }
+    }
+
+    private async IAsyncEnumerable<List<string>> HandleFilesInBatchesAsync(string pathPrefix)
+    {
+        int BatchSize = 5000;
+        var currentBatch = new List<string>(BatchSize);
+
+        foreach (var file in FileProvider.Files)
+        {
+            var normalizedKey = file.Key.Replace('\\', '/');
+        
+            if (normalizedKey.StartsWith(pathPrefix, StringComparison.OrdinalIgnoreCase) &&
+                normalizedKey.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+            {
+                currentBatch.Add(file.Key); 
+
+                if (currentBatch.Count >= BatchSize)
+                {
+                    yield return currentBatch;
+                    currentBatch = new List<string>(BatchSize);
+                    await Task.Yield(); 
+                }
+            }
         }
 
-        return await HeliosFastCache.GetOrAddAsync<IReadOnlyList<string>>(
-            COSMETICS_CACHE_KEY,
-            async () => await LoadAssetsFromPathAsync(cosmeticsPath, false, cancellationToken),
-            TimeSpan.FromHours(2) 
-        );
-    }
-    
-    private void EnsureInitialized()
-    {
-        if (!_isInitialized || FileProvider == null)
-        {
-            throw new InvalidOperationException("UnrealAssetProvider is not initialized. Call InitializeAsync first.");
-        }
+        if (currentBatch.Count > 0)
+            yield return currentBatch;
     }
 
     public void Dispose()
@@ -216,7 +222,7 @@ public class UnrealAssetProvider : IDisposable
 
         _initializationLock?.Dispose();
         FileProvider?.Dispose();
-            
+
         _isDisposed = true;
     }
 }

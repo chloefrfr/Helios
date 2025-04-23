@@ -54,7 +54,6 @@ public class ProfileBuilder : MCPProfile
         }
     }
 
-
     private void HandleItem(Items item)
     {
         if (string.IsNullOrEmpty(item.Value)) return;
@@ -145,7 +144,7 @@ public class ProfileBuilder : MCPProfile
             Logger.Error("JSON input is empty or null");
             return null;
         }
-
+        
         return HeliosFastCache.GetOrAdd(json, () =>
         {
             try

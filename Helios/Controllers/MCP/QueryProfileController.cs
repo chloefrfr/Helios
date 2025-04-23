@@ -60,7 +60,7 @@ public class QueryProfileController : ControllerBase
         if (profile is null) return MCPErrors.TemplateNotFound.Apply(HttpContext);
 
         var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
-        var profileItems = await profileItemsRepository.FindManyAsync(new Items
+        var profileItems = await profileItemsRepository.FindAllAsync(new Items
         {
             AccountId = accountId,
             ProfileId = profileId,
@@ -71,7 +71,7 @@ public class QueryProfileController : ControllerBase
             await ProcessSeasonItems(profileItemsRepository, profileItems, parsedUserAgent);
         }
 
-        var finalProfile = new ProfileBuilder(accountId, profile, user, profileItems);
+        var finalProfile = new ProfileBuilder(accountId, profile, user, profileItems.ToList());
         var profileChanges = new[] { new { changeType = "fullProfileUpdate", profile = finalProfile } };
 
         return Ok(ProfileResponseManager.Generate(profile, profileChanges, profileId));

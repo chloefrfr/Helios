@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Helios.Database.Tables.Profiles;
 using Helios.Managers;
+using Helios.Utilities.Profile;
 
 namespace Helios.Controllers;
 
@@ -106,5 +107,13 @@ public class TestController : ControllerBase
             Logger.Error($"Error creating account: {ex.Message}");
             return StatusCode(500);
         }
+    }
+
+    [HttpGet("grant_test")]
+    public async Task<IActionResult> GrantTest()
+    { 
+        await ProfileItemGranting.GrantAll("e69e5dbc-eed5-4ba5-a59f-d6917a9f5812");
+ 
+        return NoContent();
     }
 }

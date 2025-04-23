@@ -1,19 +1,15 @@
 ﻿using System.Text.Json;
-using System.Text.Json.Serialization;
 using Helios.Classes.Response;
-using Helios.Utilities.Handlers.Wrappers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace Helios.Utilities.Handlers;
 
-public sealed class ApiResponseHandler : IDisposable
+public sealed class ApiResponseHandler
 {
     private readonly ApiResponseOptions _options;
     private readonly JsonSerializerOptions _jsonOptions;
-    private readonly JsonSerializerContext _serializerContext;
     private readonly byte[] _fallbackErrorBytes;
-    private bool _disposed;
 
     public ApiResponseHandler(IOptions<ApiResponseOptions> options)
     {
@@ -21,127 +17,107 @@ public sealed class ApiResponseHandler : IDisposable
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            WriteIndented = _options.EnableDebugMode
+            WriteIndented = false
         };
-        
-        _serializerContext = new SourceGenerationContext(_jsonOptions);
         
         _fallbackErrorBytes = JsonSerializer.SerializeToUtf8Bytes(
             new StandardApiError { Code = "SERVER_ERROR", Message = "An error occurred" },
-            _serializerContext.Options
+            _jsonOptions
         );
     }
 
-    public async ValueTask HandleResponseAsync(HttpContext context, IActionResult result)
+    public Task HandleResponseAsync(HttpContext context, IActionResult result)
     {
-        if (context.Response.HasStarted) return;
+        if (context.Response.HasStarted) return Task.CompletedTask;
 
         try
         {
-            int statusCode;
-            object? value;
-
-            switch (result)
+            if (result is ObjectResult objResult)
             {
-                case ContentResult contentResult:
-                    statusCode = contentResult.StatusCode ?? 200;
-                    value = contentResult.Content;
-                    break;
-
-                case ObjectResult objectResult:
-                    statusCode = objectResult.StatusCode ?? 200;
-                    value = objectResult.Value;
-                    break;
-
-                case StatusCodeResult statusCodeResult:
-                    statusCode = statusCodeResult.StatusCode;
-                    value = null;
-                    break;
-
-                default:
-                    statusCode = 500;
-                    value = "Invalid result type";
-                    break;
+                context.Response.StatusCode = objResult.StatusCode ?? 200;
+                context.Response.ContentType = "application/json";
+                return WriteValueDirectAsync(context, objResult.Value);
             }
-
-            context.Response.StatusCode = statusCode;
-            await Serialize(context, value);
+            
+            if (result is ContentResult contentResult)
+            {
+                context.Response.StatusCode = contentResult.StatusCode ?? 200;
+                context.Response.ContentType = contentResult.ContentType ?? "application/json";
+                
+                if (contentResult.ContentType != "application/json")
+                {
+                    return context.Response.WriteAsync(contentResult.Content ?? "");
+                }
+                
+                return WriteValueDirectAsync(context, contentResult.Content);
+            }
+            
+            if (result is StatusCodeResult statusResult)
+            {
+                context.Response.StatusCode = statusResult.StatusCode;
+                context.Response.ContentType = "application/json";
+                return context.Response.WriteAsync("{}");
+            }
+            
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = "application/json";
+            return WriteValueDirectAsync(context, new { success = true });
         }
         catch (Exception ex)
         {
-            await HandleExceptionAsync(context, ex);
+            return HandleExceptionAsync(context, ex);
         }
     }
 
-    public async ValueTask HandleExceptionAsync(HttpContext context, Exception exception)
+    public Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        if (context.Response.HasStarted) return;
+        if (context.Response.HasStarted) return Task.CompletedTask;
 
         context.Response.StatusCode = 500;
-        await Serialize(context, CreateErrorPayload(context, exception));
-    }
-
-    private async ValueTask Serialize(HttpContext context, object? value)
-    {
         context.Response.ContentType = "application/json";
         
-        try
+        if (!_options.ShowDetailedErrors)
         {
-            if (value is string str)
-            {
-                await context.Response.WriteAsync(str);
-                return;
-            }
-
-            using var bufferWriter = new PooledByteBufferWriter(4096);
-            using (var writer = new Utf8JsonWriter(bufferWriter))
-            {
-                JsonSerializer.Serialize(writer, value, value?.GetType() ?? typeof(object), _serializerContext);
-            }
-
-            await context.Response.Body.WriteAsync(bufferWriter.WrittenMemory);
+            return context.Response.Body.WriteAsync(_fallbackErrorBytes, 0, _fallbackErrorBytes.Length);
         }
-        catch
-        {
-            if (!context.Response.HasStarted)
-            {
-                await context.Response.Body.WriteAsync(_fallbackErrorBytes);
-            }
-        }
-    }
 
-    private StandardApiError CreateErrorPayload(HttpContext context, Exception exception)
-    {
         var error = new StandardApiError
         {
             Code = GetErrorCode(exception),
-            TraceId = context.TraceIdentifier,
-            Timestamp = DateTime.UtcNow
+            Message = exception.Message,
+            TraceId = context.TraceIdentifier
         };
+        
+        return WriteValueDirectAsync(context, error);
+    }
 
-        if (_options.ShowDetailedErrors)
+    private Task WriteValueDirectAsync(HttpContext context, object? value)
+    {
+        if (value == null)
         {
-            error.Message = exception.Message;
-            error.Details = exception.StackTrace;
-            error.InnerError = exception.InnerException?.Message;
+            return context.Response.WriteAsync("null");
         }
-        else
+        
+        if (value is string stringValue)
         {
-            error.Message = "An error occurred";
+            if ((stringValue.StartsWith("{") && stringValue.EndsWith("}")) || 
+                (stringValue.StartsWith("[") && stringValue.EndsWith("]")))
+            {
+                return context.Response.WriteAsync(stringValue);
+            }
         }
-
-        return error;
+        
+        try
+        {
+            var serialized = JsonSerializer.Serialize(value, _jsonOptions);
+            return context.Response.WriteAsync(serialized);
+        }
+        catch
+        {
+            return context.Response.Body.WriteAsync(_fallbackErrorBytes, 0, _fallbackErrorBytes.Length);
+        }
     }
 
     private string GetErrorCode(Exception ex) => 
         _options.ErrorCodeMapping.TryGetValue(ex.GetType(), out var code) ? code : "UNKNOWN";
-
-    public void Dispose()
-    {
-        if (!_disposed)
-        {
-            (_serializerContext as IDisposable)?.Dispose();
-            _disposed = true;
-        }
-    }
 }

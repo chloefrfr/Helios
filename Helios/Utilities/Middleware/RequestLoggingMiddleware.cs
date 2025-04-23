@@ -19,17 +19,10 @@ public class RequestLoggingMiddleware
             return;
         }
     
-        var stopwatch = Stopwatch.StartNew();
-
-        var method = context.Request.Method;
-        var path = context.Request.Path;
-
+        var sw = Stopwatch.StartNew();
         await _next(context);
-
-        stopwatch.Stop();
-
-        var elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
-
-        Logger.Info($"({method}) {path} took {elapsedMilliseconds} ms with status {context.Response.StatusCode}");
+        sw.Stop();
+        
+        Logger.Info($"[{context.Request.Method}] {context.Request.Path} - {sw.ElapsedMilliseconds}ms");
     }
 }

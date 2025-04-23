@@ -318,68 +318,42 @@ namespace Helios.Database.Repository
         {
             using var conn = CreateConnection();
             await conn.OpenAsync().ConfigureAwait(false);
-            
+    
             var entitiesArray = entities as TEntity[] ?? entities.ToArray();
             if (entitiesArray.Length == 0) return;
-            
-            for (int i = 0; i < entitiesArray.Length; i += MaxBatchSize)
-            {
-                var remainingCount = Math.Min(MaxBatchSize, entitiesArray.Length - i);
-                
-                using var writer = conn.BeginBinaryImport(_metadata.CopyCommand);
-                
-                for (int j = i; j < i + remainingCount; j++)
-                {
-                    writer.StartRow();
-                    
-                    foreach (var prop in _metadata.InsertProperties)
-                    {
-                        WriteValueFast(writer, _propertyGetters[prop.Name](entitiesArray[j]), prop.Type);
-                    }
-                }
-                
-                await writer.CompleteAsync().ConfigureAwait(false);
-            }
-        }
 
-        public async Task BulkSaveAsync(IEnumerable<TEntity> entities)
-        {
-            if (!entities.Any()) return;
-            
-            await _bulkLock.WaitAsync().ConfigureAwait(false);
+            using var transaction = await conn.BeginTransactionAsync().ConfigureAwait(false);
+    
             try
             {
-                using var conn = CreateConnection();
-                await conn.OpenAsync().ConfigureAwait(false);
-                
-                var entitiesArray = entities as TEntity[] ?? entities.ToArray();
-                
                 for (int i = 0; i < entitiesArray.Length; i += MaxBatchSize)
                 {
                     var remainingCount = Math.Min(MaxBatchSize, entitiesArray.Length - i);
-                    
+            
                     using var writer = conn.BeginBinaryImport(_metadata.CopyCommand);
-                    
+            
                     for (int j = i; j < i + remainingCount; j++)
                     {
                         writer.StartRow();
-                        
                         foreach (var prop in _metadata.InsertProperties)
                         {
                             var value = _propertyGetters[prop.Name](entitiesArray[j]);
                             WriteValueFast(writer, value, prop.Type);
                         }
                     }
-                    
+            
                     await writer.CompleteAsync().ConfigureAwait(false);
                 }
+        
+                await transaction.CommitAsync().ConfigureAwait(false);
             }
-            finally
+            catch (Exception ex)
             {
-                _bulkLock.Release();
+                await transaction.RollbackAsync().ConfigureAwait(false);
+                throw new InvalidOperationException("Bulk insert failed. See inner exception.", ex);
             }
         }
-
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private (string, Dictionary<string, object>) BuildFastWhereClause(TEntity template)
         {

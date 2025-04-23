@@ -46,13 +46,13 @@ public class SetMtxPlatformController : ControllerBase
         }
 
         var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
-        var profileItems = await profileItemsRepository.FindManyAsync(new Items
+        var profileItems = await profileItemsRepository.FindAllAsync(new Items
         {
             AccountId = accountId,
             ProfileId = profileId,
         });
 
-        var finalProfile = new ProfileBuilder(accountId, profile, user, profileItems);
+        var finalProfile = new ProfileBuilder(accountId, profile, user, profileItems.ToList());
         
         var profileChanges = new List<object>
         {
