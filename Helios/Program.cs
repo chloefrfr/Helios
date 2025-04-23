@@ -7,6 +7,7 @@ using Helios.Configuration.Services;
 using Helios.Database.Tables.Account;
 using Helios.Managers;
 using Helios.Managers.Unreal;
+using Helios.Services;
 using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
 using Helios.Utilities.Middleware;
@@ -62,6 +63,10 @@ namespace Helios
             {
                 Logger.Error($"[UnrealAssetProvider] Initialization completed with errors: {ex}");
             }
+            
+            var hotfixesCsv = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "hotfixes.csv");
+            var importService = new CloudStorageImportService();
+            await importService.ImportOrUpdateFromCsvAsync(hotfixesCsv);
 
             Logger.Info($"Helios is running on: {builder.Configuration["ASPNETCORE_URLS"]}");
 

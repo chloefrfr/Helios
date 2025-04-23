@@ -354,6 +354,78 @@ namespace Helios.Database.Repository
             }
         }
         
+        public async Task BulkUpdateAsync(IEnumerable<TEntity> entities)
+        {
+            var keyProp = _metadata.Properties.FirstOrDefault(p => p.IsKey);
+            if (keyProp == null)
+                throw new InvalidOperationException("Entity must have a primary key for bulk updates.");
+
+            var entitiesList = entities.ToList();
+            if (entitiesList.Count == 0)
+                return;
+
+            var nonKeyProps = _metadata.Properties.Where(p => !p.IsKey).ToList();
+            if (nonKeyProps.Count == 0)
+                return;
+
+            using var conn = CreateConnection();
+            await conn.OpenAsync().ConfigureAwait(false);
+            
+            using var transaction = await conn.BeginTransactionAsync().ConfigureAwait(false);
+
+            try
+            {
+                for (int batchOffset = 0; batchOffset < entitiesList.Count; batchOffset += MaxBatchSize)
+                {
+                    var batchEntities = entitiesList
+                        .Skip(batchOffset)
+                        .Take(MaxBatchSize)
+                        .ToList();
+
+                    var parameters = new DynamicParameters();
+                    var valueStrings = new List<string>();
+                    
+                    for (int i = 0; i < batchEntities.Count; i++)
+                    {
+                        var entity = batchEntities[i];
+                        var keyValue = _propertyGetters[keyProp.Name](entity);
+                        if (keyValue == null)
+                            throw new InvalidOperationException("Primary key cannot be null for bulk updates.");
+                        
+                        parameters.Add($"id_{i}", ConvertValue(keyValue));
+                        
+                        foreach (var prop in nonKeyProps)
+                        {
+                            var propValue = ConvertValue(_propertyGetters[prop.Name](entity));
+                            parameters.Add($"{prop.Name}_{i}", propValue);
+                        }
+                        
+                        var valuePlaceholders = string.Join(", ", nonKeyProps.Select(p => $"@{p.Name}_{i}"));
+                        valueStrings.Add($"(@id_{i}, {valuePlaceholders})");
+                    }
+
+                    var columns = string.Join(", ", nonKeyProps.Select(p => p.ColumnName));
+                    var sql = $@"
+                        UPDATE {_metadata.TableName} 
+                        SET 
+                            {string.Join(", ", nonKeyProps.Select(p => $"{p.ColumnName} = data.{p.ColumnName}"))}
+                        FROM (VALUES 
+                            {string.Join(", ", valueStrings)}
+                        ) AS data ({keyProp.ColumnName}, {columns})
+                        WHERE {_metadata.TableName}.{keyProp.ColumnName} = data.{keyProp.ColumnName}";
+
+                    await conn.ExecuteAsync(sql, parameters, transaction).ConfigureAwait(false);
+                }
+                
+                await transaction.CommitAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync().ConfigureAwait(false);
+                throw new InvalidOperationException("Bulk update failed. See inner exception.", ex);
+            }
+        }
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private (string, Dictionary<string, object>) BuildFastWhereClause(TEntity template)
         {
