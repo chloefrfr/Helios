@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Helios.Configuration;
 using Helios.Configuration.Services;
 using Helios.Database.Tables.Account;
@@ -15,18 +16,60 @@ namespace Helios
 {
     public class Program
     {
-       static async Task Main(string[] args)
+        static async Task Main(string[] args)
         {
-            Constants.dbContext.Initialize();
+            var dbInitTask = Task.Run(() => Constants.dbContext.Initialize());
+            
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            {
+                Args = args,
+                ApplicationName = typeof(Program).Assembly.FullName,
+                WebRootPath = "wwwroot"
+            });
 
-            var builder = WebApplication.CreateBuilder(args);
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.AddServerHeader = false;
+                options.AllowSynchronousIO = false;
+            });
 
             ServiceConfiguration.ConfigureServices(builder.Services, builder.Environment);
             LoggingConfiguration.ConfigureLogging(builder.Logging, builder.Configuration);
             WebhostConfiguration.ConfigureWebhosts(builder.WebHost);
 
+            await dbInitTask;
+
             var app = builder.Build();
 
+            Task fileProviderTask = InitializeFileProvider(app);
+
+            app.UseHttpsRedirection();
+            app.UseCors("AllowAll");
+            app.UseAuthorization();
+
+            ConfigureErrorHandling(app);
+            
+            app.UseMiddleware<RequestLoggingMiddleware>();
+            app.UseMiddleware<ErrorHandlingMiddleware>();
+            
+            app.MapControllers();
+
+            try 
+            {
+                await fileProviderTask;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[UnrealAssetProvider] Initialization completed with errors: {ex}");
+            }
+
+            Logger.Info($"Helios is running on: {builder.Configuration["ASPNETCORE_URLS"]}");
+
+            await app.RunAsync();
+        }
+
+        private static async Task InitializeFileProvider(WebApplication app)
+        {
             try
             {
                 Constants.FileProvider = app.Services.GetRequiredService<UnrealAssetProvider>();
@@ -36,49 +79,53 @@ namespace Helios
             catch (Exception ex)
             {
                 Logger.Error($"[UnrealAssetProvider] Initialization failed: {ex}");
+                throw;
             }
+        }
 
-            app.UseMiddleware<RequestLoggingMiddleware>();
-            app.UseMiddleware<ErrorHandlingMiddleware>();
+        private static void ConfigureErrorHandling(WebApplication app)
+        {
+            var notFoundResponse = JsonSerializer.Serialize(BasicErrors.NotFound.Response);
+            var methodNotAllowedResponse = JsonSerializer.Serialize(BasicErrors.MethodNotAllowed.Response);
+            var serverErrorResponse = JsonSerializer.Serialize(InternalErrors.ServerError.Response);
 
             app.UseExceptionHandler(appBuilder => appBuilder.Run(async context =>
             {
                 context.Response.StatusCode = 500;
                 context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync(JsonSerializer.Serialize(InternalErrors.ServerError.Response));
+                await context.Response.WriteAsync(serverErrorResponse);
             }));
 
             app.UseStatusCodePages(async context =>
             {
                 var http = context.HttpContext;
-                var path = http.Request.Path;
                 var response = http.Response;
 
                 if (response.HasStarted) return;
 
                 response.ContentType = "application/json";
 
-                object error = response.StatusCode switch
+                switch (response.StatusCode)
                 {
-                    404 => path.ToString().Contains("/fortnite/api/game/v2/profile") && path.HasValue
-                        ? MCPErrors.OperationNotFound.WithMessage($"Operation {path.Value.Split('/').Last()} not found.").Response
-                        : BasicErrors.NotFound.Response,
-                    405 => BasicErrors.MethodNotAllowed.Response,
-                    _ => null
-                };
-
-                if (error != null)
-                    await response.WriteAsync(JsonSerializer.Serialize(error));
+                    case 404:
+                        var path = http.Request.Path;
+                        if (path.ToString().Contains("/fortnite/api/game/v2/profile") && path.HasValue)
+                        {
+                            var operationName = path.Value.Split('/').Last();
+                            var errorResponse = JsonSerializer.Serialize(
+                                MCPErrors.OperationNotFound.WithMessage($"Operation {operationName} not found.").Response);
+                            await response.WriteAsync(errorResponse);
+                        }
+                        else
+                        {
+                            await response.WriteAsync(notFoundResponse);
+                        }
+                        break;
+                    case 405:
+                        await response.WriteAsync(methodNotAllowedResponse);
+                        break;
+                }
             });
-
-            app.UseHttpsRedirection();
-            app.UseCors("AllowAll");
-            app.UseAuthorization();
-            app.MapControllers();
-
-            Logger.Info($"Helios is running on: {builder.Configuration["ASPNETCORE_URLS"]}");
-
-            await app.RunAsync();
         }
     }
 }

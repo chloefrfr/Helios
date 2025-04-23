@@ -1,4 +1,8 @@
-﻿using System.Text.Json;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Helios.Classes.UserAgent;
 using Helios.Configuration;
 using Helios.Database.Repository;
@@ -8,8 +12,8 @@ using Helios.Managers;
 using Helios.Managers.Helpers;
 using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
+using Helios.Utilities.Extensions;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
 
 namespace Helios.Controllers.MCP;
 
@@ -19,6 +23,15 @@ namespace Helios.Controllers.MCP;
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/ClientQuestLogin")]
 public class QueryProfileController : ControllerBase
 {
+    private static readonly HashSet<string> DefaultPublicProfiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "common_public",
+        "collections",
+        "creative"
+    };
+    
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = null };
+
     [HttpPost]
     public async Task<IActionResult> QueryProfile(
         [FromRoute] string accountId,
@@ -32,32 +45,44 @@ public class QueryProfileController : ControllerBase
             return MCPErrors.InvalidPayload.Apply(HttpContext);
 
         var parsedUserAgent = UserAgentParser.Parse(userAgent);
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var now = DateTime.Now;
         
+        var userRepository = Constants.repositoryPool.GetRepository<User>();
         var profilesRepository = Constants.repositoryPool.GetRepository<Profiles>();
+        
+        var now = DateTime.Now;
+        var utcNow = DateTime.UtcNow;
+        var todayString = now.ToIsoUtcString();
+        var utcNowString = utcNow.ToIsoUtcString();
+
         var userTask = userRepository.FindAsync(new User { AccountId = accountId });
         var profileTask = profilesRepository.FindAsync(new Profiles { ProfileId = profileId, AccountId = accountId });
 
         await Task.WhenAll(userTask, profileTask);
+        
         var user = await userTask;
-        var profile = await profileTask;
+        if (user is null) 
+            return AccountErrors.AccountNotFound(accountId).Apply(HttpContext);
         
-        Logger.Debug($"Requested ProfileId: {profileId}");
-
-        if (user is null) return AccountErrors.AccountNotFound(accountId).Apply(HttpContext);
-        if (profileId == "common_public" || profileId == "collections" || profileId == "creative")
+        if (DefaultPublicProfiles.Contains(profileId))
         {
-            UpdateLastLoginIfNeeded(user, now);
-            await userRepository.UpdateAsync(user);
+            if (!user.LastLogin?.StartsWith(todayString) == true)
+            {
+                user.LastLogin = now.ToIsoUtcString();
+                _ = userRepository.UpdateAsync(user);
+            }
 
-            return Ok(GenerateDefaultPublicProfile(accountId, profileId));
+            return Ok(GenerateDefaultPublicProfile(accountId, profileId, utcNowString));
         }
-        
-        UpdateLastLoginIfNeeded(user, now);
-        await userRepository.UpdateAsync(user);
 
-        if (profile is null) return MCPErrors.TemplateNotFound.Apply(HttpContext);
+        var profile = await profileTask;
+        if (profile is null) 
+            return MCPErrors.TemplateNotFound.Apply(HttpContext);
+
+        if (!user.LastLogin?.StartsWith(todayString) == true)
+        {
+            user.LastLogin = now.ToIsoUtcString();
+            _ = userRepository.UpdateAsync(user);
+        }
 
         var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
         var profileItems = await profileItemsRepository.FindAllAsync(new Items
@@ -66,31 +91,27 @@ public class QueryProfileController : ControllerBase
             ProfileId = profileId,
         });
 
+        var itemsList = profileItems.ToList();
+
         if (profile.ProfileId == "athena")
         {
-            await ProcessSeasonItems(profileItemsRepository, profileItems, parsedUserAgent);
+            await ProcessSeasonItems(profileItemsRepository, itemsList, parsedUserAgent);
         }
 
-        var finalProfile = new ProfileBuilder(accountId, profile, user, profileItems.ToList());
-        var profileChanges = new[] { new { changeType = "fullProfileUpdate", profile = finalProfile } };
+        var finalProfile = new ProfileBuilder(accountId, profile, user, itemsList);
+        var profileChanges = new object[] 
+        { 
+            new { changeType = "fullProfileUpdate", profile = finalProfile } 
+        };
 
         return Ok(ProfileResponseManager.Generate(profile, profileChanges, profileId));
     }
 
-    private void UpdateLastLoginIfNeeded(User user, DateTime now)
-    {
-        var todayString = now.ToString("yyyy-MM-dd");
-        if (user.LastLogin?.StartsWith(todayString) != true)
-        {
-            user.LastLogin = now.ToString("yyyy-MM-dd HH:mm:ss");
-        }
-    }
-
-    private static object GenerateDefaultPublicProfile(string accountId, string profileId) => new
+    private static object GenerateDefaultPublicProfile(string accountId, string profileId, string utcNowString) => new
     {
         profileRevision = 0,
         profileId,
-        profileChanges = new[]
+        profileChanges = new object[]
         {
             new
             {
@@ -98,8 +119,8 @@ public class QueryProfileController : ControllerBase
                 profile = new
                 {
                     _id = $"common_public-{accountId}",
-                    created = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                    updated = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                    created = utcNowString,
+                    updated = utcNowString,
                     rvn = 0,
                     profileId = "common_public",
                     accountId
@@ -107,53 +128,61 @@ public class QueryProfileController : ControllerBase
             }
         },
         profileCommandRevision = 0,
-        serverTime = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        serverTime = utcNowString
     };
 
     private static async Task ProcessSeasonItems(
         Repository<Items> repository,
-        IEnumerable<Items> items,
+        List<Items> items,
         SeasonInfo userAgent)
     {
         var season = userAgent.Season.ToString();
-        var updateTasks = items
-            .Where(item => item.IsAttribute && item.TemplateId == "season_num")
-            .Select(item =>
+        
+        async Task UpdateSeasonItem(Items item)
+        {
+            try
             {
-                try
-                {
-                    var jsonElement = JsonSerializer.Deserialize<JsonElement>(item.Value);
+                var jsonElement = JsonSerializer.Deserialize<JsonElement>(item.Value);
                 
-                    string currentValue;
-                    if (jsonElement.ValueKind == JsonValueKind.Number)
-                    {
-                        currentValue = jsonElement.GetInt32().ToString();
-                    }
-                    else
-                    {
-                        currentValue = jsonElement.GetString();
-                    }
-
-                    if (currentValue == season)
-                        return Task.CompletedTask;
-
-                    if (int.TryParse(season, out int seasonNum))
-                    {
-                        item.Value = JsonSerializer.Serialize(seasonNum);
-                    }
-                    else
-                    {
-                        item.Value = JsonSerializer.Serialize(season);
-                    }
-                
-                    return repository.UpdateAsync(item);
-                }
-                catch (Exception ex)
+                string currentValue;
+                if (jsonElement.ValueKind == JsonValueKind.Number)
                 {
-                    Logger.Error($"Error updating season item: {ex.Message}");
-                    return Task.CompletedTask;
+                    currentValue = jsonElement.GetInt32().ToString();
                 }
-            });
+                else
+                {
+                    currentValue = jsonElement.GetString();
+                }
+
+                if (currentValue == season)
+                    return;
+
+                if (int.TryParse(season, out int seasonNum))
+                {
+                    item.Value = JsonSerializer.Serialize(seasonNum, JsonOptions);
+                }
+                else
+                {
+                    item.Value = JsonSerializer.Serialize(season, JsonOptions);
+                }
+                
+                await repository.UpdateAsync(item);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error updating season item: {ex.Message}");
+            }
+        }
+
+        var seasonItems = items.Where(item => item.IsAttribute && item.TemplateId == "season_num").ToList();
+        if (seasonItems.Count == 0)
+            return;
+
+        var updateTasks = new Task[seasonItems.Count];
+        for (int i = 0; i < seasonItems.Count; i++)
+        {
+            updateTasks[i] = UpdateSeasonItem(seasonItems[i]);
+        }
 
         await Task.WhenAll(updateTasks);
     }
