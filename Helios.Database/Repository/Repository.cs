@@ -240,6 +240,32 @@ namespace Helios.Database.Repository
             }
         }
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public async Task<List<TEntity>> FindAllByTableAsync(int limit = 5000)
+        {
+            var sql = $"SELECT {_metadata.AllColumns} FROM {_metadata.TableName} LIMIT {limit}";
+            var conn = GetConnection();
+    
+            try
+            {
+                var result = await conn.QueryAsync<TEntity>(
+                        sql, 
+                        commandTimeout: 30) 
+                    .ConfigureAwait(false);
+                return result.AsList();
+            }
+            catch
+            {
+                using var newConn = CreateConnection();
+                await newConn.OpenAsync().ConfigureAwait(false);
+                var result = await newConn.QueryAsync<TEntity>(
+                        sql,
+                        commandTimeout: 30)
+                    .ConfigureAwait(false);
+                return result.AsList();
+            }
+        }
+        
         public async Task<List<TEntity>> FindManyAsync(TEntity template, int limit = 1000)
         {
             var (whereClause, parameters) = BuildFastWhereClause(template);

@@ -9,6 +9,6 @@ public class CloudStorage : BaseTable
     public string Filename { get; set; }
     [Column("value")]
     public string Value { get; set; }
-    [Column("is_enabled")]
-    public bool IsEnabled { get; set; }
+    [Column("enabled")]
+    public bool Enabled { get; set; }
 }

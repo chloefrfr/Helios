@@ -1,4 +1,4 @@
-"filename","value","is_enabled"
+"filename","value","enabled"
 DefaultEngine.ini,"[OnlineSubsystemMcp.Xmpp]
 bUseSSL=false
 ServerAddr=""ws://127.0.0.1:443""

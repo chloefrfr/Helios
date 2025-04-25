@@ -66,7 +66,7 @@ namespace Helios
             
             var hotfixesCsv = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "hotfixes.csv");
             var importService = new CloudStorageImportService();
-            await importService.ImportOrUpdateFromCsvAsync(hotfixesCsv);
+            await importService.ImportFromCsvIfEmptyAsync(hotfixesCsv);
 
             Logger.Info($"Helios is running on: {builder.Configuration["ASPNETCORE_URLS"]}");
 

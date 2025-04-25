@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Helios.Configuration;
 using Helios.Database.Repository;
@@ -15,64 +14,33 @@ namespace Helios.Services
     {
         private readonly Repository<CloudStorage> _repository = Constants.repositoryPool.GetRepository<CloudStorage>();
         
-        public async Task<int> ImportOrUpdateFromCsvAsync(string csvFilePath)
+        /// <summary>
+        /// Imports CSV data into the CloudStorage table if the table is empty
+        /// </summary>
+        /// <param name="csvFilePath">Path to the CSV file containing the CloudStorage data</param>
+        /// <returns>Number of records imported</returns>
+        public async Task<int> ImportFromCsvIfEmptyAsync(string csvFilePath)
         {
-            var newRecords = ParseCsvFile(csvFilePath);
-            if (newRecords.Count == 0)
-            {
-                Logger.Info("No records found in CSV file.");
+            var template = new CloudStorage();
+            var existingData = await _repository.FindManyAsync(template, 1);
+
+            if (existingData.Count > 0)
                 return 0;
-            }
+            
+            var records = ParseCsvFile(csvFilePath);
 
-            var existingRecords = await _repository.FindManyAsync(new CloudStorage());
-            var existingDict = existingRecords.ToDictionary(r => r.Filename);
-
-            var inserts = new List<CloudStorage>();
-            var updates = new List<CloudStorage>();
-
-            foreach (var newRecord in newRecords)
-            {
-                if (existingDict.TryGetValue(newRecord.Filename, out var existingRecord))
-                {
-                    if (existingRecord.Value != newRecord.Value || 
-                        existingRecord.IsEnabled != newRecord.IsEnabled)
-                    {
-                        existingRecord.Value = newRecord.Value;
-                        existingRecord.IsEnabled = newRecord.IsEnabled;
-                        updates.Add(existingRecord);
-                    }
-                }
-                else
-                {
-                    inserts.Add(newRecord);
-                }
-            }
-
-            int affectedRows = 0;
-            if (inserts.Count > 0)
-            {
-                await _repository.BulkInsertAsync(inserts);
-                affectedRows += inserts.Count;
-                Logger.Info($"Inserted {inserts.Count} new records.");
-            }
-
-            if (updates.Count > 0)
-            {
-                await _repository.BulkUpdateAsync(updates); 
-                affectedRows += updates.Count;
-                Logger.Info($"Updated {updates.Count} existing records.");
-            }
-
-            if (affectedRows == 0)
-                Logger.Info("Database is already up-to-date with the CSV.");
-
-            return affectedRows;
+            if (records.Count == 0)
+                return 0;
+            
+            await _repository.BulkInsertAsync(records);
+            Logger.Info($"Successfully imported {records.Count} CloudStorage records.");
+            return records.Count;
         }
-
+        
         private List<CloudStorage> ParseCsvFile(string filePath)
         {
             var records = new List<CloudStorage>();
-            
+
             using (var parser = new TextFieldParser(filePath))
             {
                 parser.TextFieldType = FieldType.Delimited;
@@ -92,13 +60,13 @@ namespace Helios.Services
                     }
                     catch (MalformedLineException ex)
                     {
-                        Logger.Error($"Malformed line skipped: {ex.Message}");
+                        Console.WriteLine($"Malformed line skipped: {ex.Message}");
                         continue;
                     }
 
                     if (fields == null || fields.Length < 3)
                     {
-                        Logger.Warn("Skipping line with insufficient fields.");
+                        Console.WriteLine("Skipping line with insufficient fields.");
                         continue;
                     }
 
@@ -108,7 +76,7 @@ namespace Helios.Services
 
                     if (!bool.TryParse(isEnabledStr, out bool isEnabled))
                     {
-                        Logger.Warn($"Invalid boolean value '{isEnabledStr}' in line: {filename}");
+                        Console.WriteLine($"Invalid boolean value '{isEnabledStr}' in line: {string.Join(",", fields)}");
                         continue;
                     }
 
@@ -116,10 +84,11 @@ namespace Helios.Services
                     {
                         Filename = filename,
                         Value = value,
-                        IsEnabled = isEnabled
+                        Enabled = isEnabled
                     });
                 }
             }
+
             return records;
         }
     }
