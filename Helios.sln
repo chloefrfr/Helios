@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Helios.HTTP.Utilities", "He
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CUE4Parse", "libs\CUE4Parse\CUE4Parse\CUE4Parse.csproj", "{1747D708-53E3-4BCC-A9CC-0B8A8954F61D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Helios.Socket", "Helios.Socket\Helios.Socket.csproj", "{48EEA8FF-CDF8-4296-95A7-23C00D82FEFC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{1747D708-53E3-4BCC-A9CC-0B8A8954F61D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1747D708-53E3-4BCC-A9CC-0B8A8954F61D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1747D708-53E3-4BCC-A9CC-0B8A8954F61D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48EEA8FF-CDF8-4296-95A7-23C00D82FEFC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48EEA8FF-CDF8-4296-95A7-23C00D82FEFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48EEA8FF-CDF8-4296-95A7-23C00D82FEFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48EEA8FF-CDF8-4296-95A7-23C00D82FEFC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

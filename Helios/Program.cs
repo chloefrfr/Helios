@@ -11,6 +11,7 @@ using Helios.Services;
 using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
 using Helios.Utilities.Middleware;
+using Helios.XMPP;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace Helios
@@ -41,6 +42,9 @@ namespace Helios
             await dbInitTask;
 
             var app = builder.Build();
+            
+            var test = app.Services.GetRequiredService<XmppClient>();
+            await test.StartAsync();
 
             Task fileProviderTask = InitializeFileProvider(app);
 

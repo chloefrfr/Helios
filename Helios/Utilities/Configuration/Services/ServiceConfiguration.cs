@@ -6,6 +6,7 @@ using Helios.Managers.Unreal;
 using Helios.Services;
 using Helios.Utilities.Exceptions;
 using Helios.Utilities.Handlers;
+using Helios.XMPP;
 using Serilog;
 
 namespace Helios.Configuration.Services;
@@ -26,7 +27,8 @@ public static class ServiceConfiguration
         });
         
         services.AddScoped<ApiResponseHandler>();
-
+        services.AddSingleton<XmppClient>();
+        
         services.AddLogging(builder => builder.AddSerilog());
 
         services.AddRateLimiter(options =>

@@ -7,6 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Fleck" Version="1.2.0" />
         <PackageReference Include="jose-jwt" Version="5.1.1" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.10"/>
         <PackageReference Include="Serilog" Version="4.2.1-dev-02340" />
@@ -20,6 +21,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Helios.Database\Helios.Database.csproj" />
       <ProjectReference Include="..\Helios.HTTP.Utilities\Helios.HTTP.Utilities.csproj" />
+      <ProjectReference Include="..\Helios.Socket\Helios.Socket.csproj" />
       <ProjectReference Include="..\libs\CUE4Parse\CUE4Parse\CUE4Parse.csproj" />
     </ItemGroup>
 
