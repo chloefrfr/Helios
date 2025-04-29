@@ -21,6 +21,7 @@ namespace Helios.Controllers.MCP;
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/QueryProfile")]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/ClaimMfaEnabled")]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/ClientQuestLogin")]
+[Route("/fortnite/api/game/v2/profile/{accountId}/client/SetHardcoreModifier")]
 public class QueryProfileController : ControllerBase
 {
     private static readonly HashSet<string> DefaultPublicProfiles = new(StringComparer.OrdinalIgnoreCase)
