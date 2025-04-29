@@ -21,6 +21,7 @@ public class XmppClient
         ["open"] = new Action<IWebSocketConnection, ClientSessions, XmppMessage>(OpenHandler.Handle),
         ["auth"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(AuthHandler.HandleAsync),
         ["iq"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(IqHandler.HandleAsync),
+        ["presence"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(PresenceHandler.HandleAsync),
     };
     
     public async Task StartAsync()
