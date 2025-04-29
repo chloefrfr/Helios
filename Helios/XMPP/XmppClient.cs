@@ -63,7 +63,7 @@ public class XmppClient
 
         if (clientSession is null || socket is null)
             return;
-
+        
         // TODO: Handle all of this in messageHandler
         if (!_server.TryParseXmppMessage(e.Message, out var xmppMessage))
             return;
