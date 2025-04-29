@@ -30,6 +30,8 @@ public class ClientSessions : BaseTable
     
     [Column("isLoggedIn")]
     public bool IsLoggedIn { get; set; }
+    [Column("isAdmin")]
+    public bool IsAdmin { get; set; }
     
     [Column("isAuthenticated")]
     public bool IsAuthenticated { get; set; }

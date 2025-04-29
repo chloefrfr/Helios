@@ -14,4 +14,10 @@ public class WebSocketConfiguration
     public bool EnableLogging { get; set; } = true;
     public static DatabaseCtx dbContext { get; } = new DatabaseCtx(config.DatabaseConnectionUrl);
     public static RepositoryPool repositoryPool { get; } = new RepositoryPool(config.DatabaseConnectionUrl);
+    
+    public string AdminUsername { get; set; } = "admin";
+    public string AdminPassword { get; set; } = "admin123";
+    public string AdminPasswordHash { get; set; } = ""; // dont touch
+    public string AdminSecretKey { get; set; } = Guid.NewGuid().ToString(); 
+    public int AdminTokenExpirationMinutes { get; set; } = 60;
 }

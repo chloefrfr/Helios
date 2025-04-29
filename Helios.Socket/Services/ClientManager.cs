@@ -31,6 +31,7 @@ public class ClientManager : IClientManager
 
     public async Task RemoveClient(IWebSocketConnection connection)
     {
+        await Clients.DeleteAsync(new ClientSessions { SocketId = connection.ConnectionInfo.Id }).ConfigureAwait(false);
         Globals._socketConnections.Remove(connection.ConnectionInfo.Id);
     }
 
@@ -54,5 +55,11 @@ public class ClientManager : IClientManager
     public async Task Clear()
     {
         await Clients.DeleteAsync(new ClientSessions()); // TODO: Add DeleteAllByTableAsync
+    }
+
+    public async Task<bool> ClientExists(Guid guid)
+    {
+        var client = await Clients.FindAsync(new ClientSessions { SocketId = guid });
+        return client != null;
     }
 }

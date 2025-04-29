@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using Fleck;
 using Helios.Database.Tables.XMPP;
+using Helios.Socket.Admin;
 using Helios.Socket.Classes;
 using Helios.Socket.Events;
 using Helios.Socket.Interfaces;
@@ -17,23 +18,37 @@ public class WebSocketServer : IWebSocketServer, IDisposable
     private readonly WebSocketConfiguration _configuration;
     private readonly MessageHandler _messageHandler;
     private bool _disposed;
-
+    private ClientSessions _adminSession;
+    private readonly AdminAuthService _adminAuthService;
+    private readonly AdminCommandService _adminCommandService;
+    private System.Threading.Timer _tokenCleanupTimer;
     public bool IsRunning { get; private set; }
     
     public event EventHandler<ClientConnectedEventArgs> ClientConnected;
     public event EventHandler<ClientDisconnectedEventArgs> ClientDisconnected;
     public event EventHandler<MessageReceivedEventArgs> MessageReceived;
     public event EventHandler<Events.ErrorEventArgs> ErrorOccurred;
+    public event EventHandler<AdminCommandExecutedEventArgs> AdminCommandExecuted;
 
     public WebSocketServer(WebSocketConfiguration configuration = null)
     {
         _configuration = configuration ?? new WebSocketConfiguration();
         _clientManager = new ClientManager();
         _messageHandler = new MessageHandler(_clientManager);
+        _adminAuthService = new AdminAuthService(_configuration);
+        _adminCommandService = new AdminCommandService(_clientManager, _adminAuthService);
+        
+        _tokenCleanupTimer = new System.Threading.Timer(
+            _ => _adminAuthService.CleanExpiredTokens(),
+            null,
+            TimeSpan.FromMinutes(5),
+            TimeSpan.FromMinutes(5)
+        );
+
         
         IsRunning = false;
     }
-
+    
     public void Start()
     {
         if (IsRunning)
@@ -77,8 +92,7 @@ public class WebSocketServer : IWebSocketServer, IDisposable
             
             var server = new Fleck.WebSocketServer(_configuration.ServerUrl);
             server.RestartAfterListenError = _configuration.RestartAfterListenError;
-            
-            server.Start(socket =>
+            server.Start(async socket =>
             {
                 socket.OnOpen = async () => await HandleClientConnected(socket);
                 socket.OnClose = async () => await HandleClientDisconnected(socket);
@@ -175,6 +189,12 @@ public class WebSocketServer : IWebSocketServer, IDisposable
             if (clientSession != null)
             {
                 await _clientManager.RemoveClient(socket.ConnectionInfo.Id);
+                
+                if (clientSession.IsAdmin && !string.IsNullOrEmpty(clientSession.Token))
+                {
+                    _adminAuthService.RevokeToken(clientSession.Token);
+                }
+                
                 Logger.Info($"Client disconnected: {clientSession}");
                 OnClientDisconnected(new ClientDisconnectedEventArgs { Client = clientSession });
             }
@@ -195,15 +215,22 @@ public class WebSocketServer : IWebSocketServer, IDisposable
     {
         try
         {
-            var clientSession = await _clientManager.Clients.FindAsync(new ClientSessions { SocketId = socket.ConnectionInfo.Id });
-            if (clientSession != null)
+            var clientSession = await _clientManager.Clients.FindAsync(
+                new ClientSessions { SocketId = socket.ConnectionInfo.Id });
+            
+            if (clientSession == null) return;
+
+            if (message.Contains("\"type\":\"admin\"") || message.Contains("\"type\": \"admin\""))
             {
-                OnMessageReceived(new MessageReceivedEventArgs
-                {
-                    Client = clientSession,
-                    Message = message
-                });
+                await HandleAdminMessage(clientSession, socket, message);
+                return;
             }
+            
+            OnMessageReceived(new MessageReceivedEventArgs
+            {
+                Client = clientSession,
+                Message = message
+            });
         }
         catch (Exception ex)
         {
@@ -214,6 +241,57 @@ public class WebSocketServer : IWebSocketServer, IDisposable
                 Error = ex,
                 ErrorSource = "Message handler"
             });
+        }
+    }
+    
+      private async Task HandleAdminMessage(ClientSessions client, IWebSocketConnection socket, string message)
+    {
+        try
+        {
+            var xmppMessage = JsonSerializer.Deserialize<XmppMessage>(message);
+            if (xmppMessage?.Type != "admin")
+                return;
+                
+            var adminMessage = JsonSerializer.Deserialize<AdminMessage>(xmppMessage.RawContent);
+            if (adminMessage == null)
+            {
+                await socket.Send(JsonSerializer.Serialize(new XmppMessage
+                {
+                    Type = "adminResponse",
+                    From = "server",
+                    To = client.SocketId.ToString(),
+                    RawContent = JsonSerializer.Serialize(new { success = false, error = "Invalid admin message format" })
+                }));
+                return;
+            }
+            
+            var result = await _adminCommandService.HandleAdminCommand(client, adminMessage);
+            
+            await socket.Send(JsonSerializer.Serialize(new XmppMessage
+            {
+                Type = "adminResponse",
+                From = "server",
+                To = client.SocketId.ToString(),
+                RawContent = JsonSerializer.Serialize(result)
+            }));
+            
+            OnAdminCommandExecuted(new AdminCommandExecutedEventArgs
+            {
+                Client = client,
+                Command = adminMessage.Type,
+                Success = result.GetType().GetProperty("success")?.GetValue(result) as bool? ?? false
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Error handling admin message: {ex.Message}");
+            await socket.Send(JsonSerializer.Serialize(new XmppMessage
+            {
+                Type = "adminResponse",
+                From = "server",
+                To = client.SocketId.ToString(),
+                RawContent = JsonSerializer.Serialize(new { success = false, error = "Server error processing admin command" })
+            }));
         }
     }
 
@@ -275,7 +353,12 @@ public class WebSocketServer : IWebSocketServer, IDisposable
     {
         ClientConnected?.Invoke(this, e);
     }
-    
+
+    protected virtual void OnAdminCommandExecuted(AdminCommandExecutedEventArgs e)
+    {
+        AdminCommandExecuted?.Invoke(this, e);
+    }
+
     public void Dispose()
     {
         Dispose(true);
