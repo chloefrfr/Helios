@@ -106,9 +106,16 @@ public class XmppClient
 
         if (isValidConnection)
         {
+            // var existingSession = await clientSessionRepository.FindAsync(new ClientSessions { DisplayName = clientSession.DisplayName });
+            // if (existingSession != null)
+            // {
+            //     await clientSessionRepository.DeleteAsync(existingSession);
+            //     Logger.Info($"Deleted existing session for '{clientSession.DisplayName}'");
+            // }
+
             clientSession.IsLoggedIn = true;
             await clientSessionRepository.UpdateAsync(clientSession);
-            
+    
             Logger.Info($"Successfully logged in as '{clientSession.DisplayName}'");
         }
     }
