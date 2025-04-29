@@ -150,40 +150,44 @@ namespace Helios.Database.Repository
             if (keyProp == null)
                 throw new InvalidOperationException("Entity must have a primary key defined for updates.");
 
-            var nonKeyProps = _metadata.Properties.Where(p => !p.IsKey).ToArray();
             var keyValue = _propertyGetters[keyProp.Name](entity);
-            
             if (keyValue == null)
                 throw new InvalidOperationException("Primary key value cannot be null for updates.");
-            
+
+            var nonKeyProps = _metadata.Properties.Where(p => !p.IsKey).ToArray();
+            if (nonKeyProps.Length == 0)
+                throw new InvalidOperationException("No updatable properties found for the entity.");
+
             var sb = StringBuilderCache.Acquire(256);
             sb.Append(_updateBaseSql);
-            
+
             var parameters = new Dictionary<string, object>(nonKeyProps.Length + 1);
-            parameters[keyProp.Name] = ConvertValue(keyValue);
-            
+
             for (int i = 0; i < nonKeyProps.Length; i++)
             {
                 var prop = nonKeyProps[i];
                 var value = _propertyGetters[prop.Name](entity);
-                parameters[prop.Name] = ConvertValue(value);
-                
-                sb.Append(prop.ColumnName);
-                sb.Append(" = @");
-                sb.Append(prop.Name);
-                
+
+                sb.Append(prop.ColumnName)
+                    .Append(" = @")
+                    .Append(prop.Name);
+
                 if (i < nonKeyProps.Length - 1)
                     sb.Append(", ");
+
+                parameters[prop.Name] = ConvertValue(value);
             }
-            
-            sb.Append(" WHERE ");
-            sb.Append(keyProp.ColumnName);
-            sb.Append(" = @");
-            sb.Append(keyProp.Name);
-            
+
+            sb.Append(" WHERE ")
+                .Append(keyProp.ColumnName)
+                .Append(" = @")
+                .Append(keyProp.Name);
+
+            parameters[keyProp.Name] = ConvertValue(keyValue);
+
             var sql = StringBuilderCache.GetStringAndRelease(sb);
             var conn = GetConnection();
-            
+
             try
             {
                 return await conn.ExecuteAsync(sql, parameters).ConfigureAwait(false);

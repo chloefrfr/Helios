@@ -109,11 +109,14 @@ public class TestController : ControllerBase
         }
     }
 
-    [HttpGet("grant_test")]
+    [HttpGet("yes")]
     public async Task<IActionResult> GrantTest()
-    { 
-        await ProfileItemGranting.GrantAll("e69e5dbc-eed5-4ba5-a59f-d6917a9f5812");
- 
+    {
+        var fRepo = Constants.repositoryPool.GetRepository<Friends>();
+        await fRepo.SaveAsync(new Friends
+        {
+            
+        });
         return NoContent();
     }
 }

@@ -33,16 +33,9 @@ public class AuthHandler
         Console.WriteLine(JsonConvert.SerializeObject(authFields, Formatting.Indented));
         string accountId = authFields[1];
 
-        var tokensRepository = Constants.repositoryPool.GetRepository<Tokens>();
         var userRepository = Constants.repositoryPool.GetRepository<User>();
         var clientSessionsRepository = Constants.repositoryPool.GetRepository<ClientSessions>();
         
-        var accessToken = await tokensRepository.FindAsync(new Tokens
-        {
-            AccountId = accountId,
-            Type = "accesstoken"
-        });
-
         if (await clientSessionsRepository.FindAsync(new ClientSessions { AccountId = accountId }) != null)
         {
             socket.Close();
@@ -57,7 +50,7 @@ public class AuthHandler
         }
 
         client.AccountId = accountId;
-        if (accessToken != null) client.Token = accessToken.Token;
+        client.Token = authFields[2];
         client.DisplayName = user.Username;
         client.IsAuthenticated = true;
 
