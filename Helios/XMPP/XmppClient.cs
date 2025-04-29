@@ -19,6 +19,7 @@ public class XmppClient
     private static readonly ConcurrentDictionary<string, Delegate> Handlers = new ConcurrentDictionary<string, Delegate>
     {
         ["open"] = new Action<IWebSocketConnection, ClientSessions, XmppMessage>(OpenHandler.Handle),
+        ["auth"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(AuthHandler.HandleAsync),
     };
     
     public async Task StartAsync()
@@ -61,38 +62,37 @@ public class XmppClient
         if (clientSession is null || socket is null)
             return;
 
-        if (_server.TryParseXmppMessage(e.Message, out var xmppMessage))
+        // TODO: Handle all of this in messageHandler
+        if (!_server.TryParseXmppMessage(e.Message, out var xmppMessage))
+            return;
+
+        if (!Handlers.TryGetValue(xmppMessage.Type, out var handler))
         {
-            string rootName = xmppMessage.Type;
-            Logger.Info($"Requested MessageType: {rootName}");
-            
-            if (Handlers.TryGetValue(rootName, out var handler))
+            Logger.Warn($"No handler found for root element: {xmppMessage.Type}");
+            return;
+        }
+
+        Logger.Info($"Requested MessageType: {xmppMessage.Type}");
+
+        try
+        {
+            switch (handler)
             {
-                try
-                {
-                    if (handler is Func<IWebSocketConnection, ClientSessions, XmppMessage, Task> asyncHandler)
-                    {
-                        await asyncHandler(socket, clientSession, xmppMessage);
-                    }
-                    else if (handler is Action<IWebSocketConnection, ClientSessions, XmppMessage> syncHandler)
-                    {
-                        syncHandler(socket, clientSession, xmppMessage);
-                    }
-                    else
-                    {
-                        Logger.Error($"Handler for '{rootName}' has an unsupported type.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Error executing handler for root '{rootName}': {ex.Message}");
-                }
+                case Func<IWebSocketConnection, ClientSessions, XmppMessage, Task> asyncHandler:
+                    await asyncHandler(socket, clientSession, xmppMessage);
+                    break;
+                case Action<IWebSocketConnection, ClientSessions, XmppMessage> syncHandler:
+                    syncHandler(socket, clientSession, xmppMessage);
+                    break;
+                default:
+                    Logger.Error($"Handler for '{xmppMessage.Type}' has an unsupported type.");
+                    break;
             }
-            else
-            {
-                Logger.Warn($"No handler found for root element: {rootName}");
-            }
-        }        
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Error executing handler for root '{xmppMessage.Type}': {ex.Message}");
+        }
         
         bool isValidConnection =
             !clientSession.IsLoggedIn &&
