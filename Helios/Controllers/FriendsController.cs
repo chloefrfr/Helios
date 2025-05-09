@@ -52,9 +52,13 @@ public class FriendsController : ControllerBase
     [HttpGet("v1/{accountId}/settings")]
     public IActionResult GetSettings(string accountId)
     {
+        if (string.IsNullOrWhiteSpace(accountId))
+            return BasicErrors.BadRequest.WithMessage("Invalid account id").Apply(HttpContext);
+        
         return Ok(new
         {
-            acceptInvites = "public"
+            acceptInvites = "public", // public, friends_of_friends, private
+            mutualPrivacy = "ALL" // ALL, FRIENDS, NONE
         });
     }
     
