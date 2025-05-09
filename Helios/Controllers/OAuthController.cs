@@ -19,7 +19,7 @@ namespace Helios.Controllers;
 public class OAuthController : ControllerBase
 {
     private readonly IBodyParser _bodyParser;
-    private const int AccessTokenLifetimeMinutes = 15;
+    private const int AccessTokenLifetimeHours = 8;
     private const int RefreshTokenLifetimeDays = 7;
 
     public OAuthController(IBodyParser bodyParser)
@@ -166,8 +166,8 @@ public class OAuthController : ControllerBase
         return Ok(new
         {
             access_token = $"eg1~{accessToken}",
-            expires_in = AccessTokenLifetimeMinutes * 60,
-            expires_at = now.AddMinutes(AccessTokenLifetimeMinutes).ToIsoUtcString(),
+            expires_in = AccessTokenLifetimeHours * 60 * 60,
+            expires_at = now.AddHours(AccessTokenLifetimeHours).ToIsoUtcString(),
             token_type = "bearer",
             account_id = accountId,
             client_id = clientId,

@@ -125,8 +125,6 @@ public static class ProfileManager
             return false;
         }
         
-        var stopwatch = Stopwatch.StartNew();
-        
         try
         {
             var profileRepository = Constants.repositoryPool.Repo<Profiles>();
@@ -136,14 +134,10 @@ public static class ProfileManager
             string cacheKey = $"profile_{profile.AccountId}_{profile.ProfileId}";
             HeliosFastCache.Set(cacheKey, profile, _defaultCacheExpiration);
             
-            stopwatch.Stop();
-            Logger.Debug($"UpdateProfileAsync took {stopwatch.ElapsedMilliseconds}ms");
-            
             return true;
         }
         catch (Exception ex)
         {
-            stopwatch.Stop();
             Logger.Error($"Failed to update profile for account {profile.AccountId} with type {profile.ProfileId}: {ex.Message}");
             return false;
         }
