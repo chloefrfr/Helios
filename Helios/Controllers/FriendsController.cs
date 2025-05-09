@@ -136,8 +136,8 @@ public class FriendsController : ControllerBase
         var userRepo = Constants.repositoryPool.For<User>();
         var friendRepo = Constants.repositoryPool.For<Friends>();
 
-        var user = await userRepo.FindAsync(u => u.AccountId == accountId);
-        var friend = await userRepo.FindAsync(u => u.AccountId == friendId);
+        var user = await userRepo.FindAsync(new User { AccountId = accountId});
+        var friend = await userRepo.FindAsync(new User { AccountId = friendId });
 
         if (user == null || friend == null)
             return AccountErrors.AccountNotFound(accountId)
