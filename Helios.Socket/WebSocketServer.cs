@@ -174,8 +174,6 @@ public class WebSocketServer : IWebSocketServer, IDisposable
             if (clientSession != null)
             {
                 await _clientManager.RemoveClient(socket.ConnectionInfo.Id);
-                
-                Logger.Info($"Client disconnected: {clientSession}");
                 OnClientDisconnected(new ClientDisconnectedEventArgs { Client = clientSession });
             }
         }

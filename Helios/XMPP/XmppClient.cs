@@ -22,6 +22,7 @@ public class XmppClient
         ["auth"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(AuthHandler.HandleAsync),
         ["iq"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(IqHandler.HandleAsync),
         ["presence"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(PresenceHandler.HandleAsync),
+        ["message"] = new Func<IWebSocketConnection, ClientSessions, XmppMessage, Task>(MessageHandler.HandleAsync),
     };
     
     public async Task StartAsync()
@@ -106,13 +107,6 @@ public class XmppClient
 
         if (isValidConnection)
         {
-            // var existingSession = await clientSessionRepository.FindAsync(new ClientSessions { DisplayName = clientSession.DisplayName });
-            // if (existingSession != null)
-            // {
-            //     await clientSessionRepository.DeleteAsync(existingSession);
-            //     Logger.Info($"Deleted existing session for '{clientSession.DisplayName}'");
-            // }
-
             clientSession.IsLoggedIn = true;
             await clientSessionRepository().UpdateAsync(clientSession);
     
