@@ -23,7 +23,6 @@ public class WebSocketServer : IWebSocketServer, IDisposable
     public event EventHandler<ClientDisconnectedEventArgs> ClientDisconnected;
     public event EventHandler<MessageReceivedEventArgs> MessageReceived;
     public event EventHandler<Events.ErrorEventArgs> ErrorOccurred;
-    public event EventHandler<AdminCommandExecutedEventArgs> AdminCommandExecuted;
 
     public WebSocketServer(WebSocketConfiguration configuration = null)
     {
@@ -170,11 +169,11 @@ public class WebSocketServer : IWebSocketServer, IDisposable
     {
         try
         {
-            var clientSession = await _clientManager.Clients.FindAsync(new ClientSessions { SocketId = socket.ConnectionInfo.Id });
-            if (clientSession != null)
+            var (success, client) = await _clientManager.TryGetClientAsync(socket.ConnectionInfo.Id);
+            if (success && client != null)
             {
                 await _clientManager.RemoveClient(socket.ConnectionInfo.Id);
-                OnClientDisconnected(new ClientDisconnectedEventArgs { Client = clientSession });
+                OnClientDisconnected(new ClientDisconnectedEventArgs { Client = client });
             }
         }
         catch (Exception ex)
@@ -198,12 +197,7 @@ public class WebSocketServer : IWebSocketServer, IDisposable
             
             if (clientSession == null) return;
 
-            if (message.Contains("\"type\":\"admin\"") || message.Contains("\"type\": \"admin\""))
-            {
-                await HandleAdminMessage(clientSession, socket, message);
-                return;
-            }
-            
+
             OnMessageReceived(new MessageReceivedEventArgs
             {
                 Client = clientSession,
@@ -219,40 +213,6 @@ public class WebSocketServer : IWebSocketServer, IDisposable
                 Error = ex,
                 ErrorSource = "Message handler"
             });
-        }
-    }
-    
-      private async Task HandleAdminMessage(ClientSessions client, IWebSocketConnection socket, string message)
-    {
-        try
-        {
-            var xmppMessage = JsonSerializer.Deserialize<XmppMessage>(message);
-            if (xmppMessage?.Type != "admin")
-                return;
-                
-            var adminMessage = JsonSerializer.Deserialize<AdminMessage>(xmppMessage.RawContent);
-            if (adminMessage == null)
-            {
-                await socket.Send(JsonSerializer.Serialize(new XmppMessage
-                {
-                    Type = "adminResponse",
-                    From = "server",
-                    To = client.SocketId.ToString(),
-                    RawContent = JsonSerializer.Serialize(new { success = false, error = "Invalid admin message format" })
-                }));
-                return;
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Error handling admin message: {ex.Message}");
-            await socket.Send(JsonSerializer.Serialize(new XmppMessage
-            {
-                Type = "adminResponse",
-                From = "server",
-                To = client.SocketId.ToString(),
-                RawContent = JsonSerializer.Serialize(new { success = false, error = "Server error processing admin command" })
-            }));
         }
     }
 
@@ -281,12 +241,15 @@ public class WebSocketServer : IWebSocketServer, IDisposable
         }
         catch (Exception handlerEx)
         {
-            Logger.Error($"Error in error handler: {handlerEx.Message}");
-            OnErrorOccurred(new Events.ErrorEventArgs
+            if (!handlerEx.Message.Contains("An existing connection was forcibly closed by the remote host"))
             {
-                Error = handlerEx,
-                ErrorSource = "Error handler"
-            });
+                Logger.Error($"Error in error handler: {handlerEx.Message}");
+                OnErrorOccurred(new Events.ErrorEventArgs
+                {
+                    Error = handlerEx,
+                    ErrorSource = "Error handler"
+                });
+            }
         }
     }
     
@@ -314,11 +277,7 @@ public class WebSocketServer : IWebSocketServer, IDisposable
     {
         ClientConnected?.Invoke(this, e);
     }
-
-    protected virtual void OnAdminCommandExecuted(AdminCommandExecutedEventArgs e)
-    {
-        AdminCommandExecuted?.Invoke(this, e);
-    }
+   
 
     public void Dispose()
     {
