@@ -1,5 +1,6 @@
 ﻿using Helios.Configuration;
 using Helios.Database.Tables.Account;
+using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
 using Microsoft.AspNetCore.Mvc;
 
@@ -55,5 +56,68 @@ public class FriendsController : ControllerBase
         {
             acceptInvites = "public"
         });
+    }
+    
+    [HttpGet("public/blocklist/{accountId}")]
+    public async Task<IActionResult> GetPublicBlocklist(string accountId)
+    {
+        if (string.IsNullOrWhiteSpace(accountId))
+            return BasicErrors.BadRequest.WithMessage("Invalid account id").Apply(HttpContext);
+
+        var friends = await Constants.repositoryPool.For<Friends>()
+            .FindAllAsync(new Friends { AccountId = accountId, Status = "BLOCKED" });
+
+        if (friends == null || friends.Count() == 0)
+            return AccountErrors.AccountNotFound(accountId)
+                .WithMessage($"No blocked friends found for accountId: {accountId}")
+                .Apply(HttpContext);
+
+        var blockedUsers = friends.Select(f => new
+        {
+            f.AccountId,
+            f.CreatedAt
+        });
+
+        return Ok(new { blockedUsers });
+    }
+    
+    [HttpGet("public/friends/{accountId}")]
+    public async Task<IActionResult> GetPublicFriends(string accountId)
+    {
+        if (string.IsNullOrWhiteSpace(accountId))
+            return BasicErrors.BadRequest.WithMessage("Invalid account id").Apply(HttpContext);
+
+        try
+        {
+            var friends = await Constants.repositoryPool.For<Friends>()
+                .FindAllAsync(new Friends { AccountId = accountId});
+
+            if (friends == null || friends.Count() == 0)
+                return AccountErrors.AccountNotFound(accountId)
+                    .WithMessage($"No friends found for accountId: {accountId}")
+                    .Apply(HttpContext);
+
+            var result = friends.Select(f => new
+            {
+                accountId = f.FriendId,
+                created = f.CreatedAt,
+                direction = f.Direction,
+                favorite = false,
+                status = f.Status
+            });
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Error while fetching friends for accountId {accountId}: {ex.Message}");
+            return InternalErrors.ServerError.Apply(HttpContext);
+        }
+    }
+    
+    [HttpGet("v1/{accountId}/recent/{type}")]
+    public IActionResult GetRecentByType(string accountId, string type)
+    {
+        return NoContent();
     }
 }
