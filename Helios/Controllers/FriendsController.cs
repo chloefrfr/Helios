@@ -72,7 +72,7 @@ public class FriendsController : ControllerBase
             .FindAllAsync(new Friends { AccountId = accountId, Status = "BLOCKED" });
 
         if (friends == null || friends.Count() == 0)
-            return AccountErrors.AccountNotFound(accountId)
+            return FriendsErrors.AccountNotFound
                 .WithMessage($"No blocked friends found for accountId: {accountId}")
                 .Apply(HttpContext);
 
@@ -97,7 +97,7 @@ public class FriendsController : ControllerBase
                 .FindAllAsync(new Friends { AccountId = accountId});
 
             if (friends == null || friends.Count() == 0)
-                return AccountErrors.AccountNotFound(accountId)
+                return FriendsErrors.AccountNotFound
                     .WithMessage($"No friends found for accountId: {accountId}")
                     .Apply(HttpContext);
 
@@ -123,5 +123,61 @@ public class FriendsController : ControllerBase
     public IActionResult GetRecentByType(string accountId, string type)
     {
         return NoContent();
+    }
+
+    [HttpPost("v1/{accountId}/friends/{friendId}")]
+    [HttpPost("v1/friends/{accountId}/{friendId}")]
+    [HttpPost("public/friends/{accountId}/{friendId}")]
+    public async Task<IActionResult> AddFriend(string accountId, string friendId)
+    {
+        if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(friendId))
+            return BasicErrors.BadRequest.WithMessage("Invalid account id or friend id").Apply(HttpContext);
+
+        var userRepo = Constants.repositoryPool.For<User>();
+        var friendRepo = Constants.repositoryPool.For<Friends>();
+
+        var user = await userRepo.FindAsync(u => u.AccountId == accountId);
+        var friend = await userRepo.FindAsync(u => u.AccountId == friendId);
+
+        if (user == null || friend == null)
+            return AccountErrors.AccountNotFound(accountId)
+                .WithMessage("User or friend not found.")
+                .Apply(HttpContext);
+
+        try
+        {
+            var existingFriendEntry = await friendRepo.FindAsync(new Friends { AccountId = friendId, FriendId = accountId });
+            var reverseFriendEntry = await friendRepo.FindAsync(new Friends { AccountId = accountId, FriendId = friendId });
+
+            if (existingFriendEntry != null && reverseFriendEntry != null)
+            {
+                if (existingFriendEntry.Status == StatusAccepted)
+                {
+                    return FriendsErrors.RequestAlreadySent
+                        .WithMessage($"Friendship between {accountId} and {friendId} already exists.")
+                        .Apply(HttpContext);
+                }
+
+                if (existingFriendEntry.Status == StatusPending)
+                {
+                    existingFriendEntry.Status = reverseFriendEntry.Status = StatusAccepted;
+                    existingFriendEntry.Direction = reverseFriendEntry.Direction = DirectionOutbound;
+
+                    await friendRepo.UpdateAsync(existingFriendEntry);
+                    await friendRepo.UpdateAsync(reverseFriendEntry);
+                    
+                    // TODO: Send xmpp stanza here
+
+                    return NoContent();
+                }
+            }
+
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Error creating friendship between {accountId} and {friendId}: {ex.Message}");
+            return InternalErrors.ServerError.Apply(HttpContext);
+        }
     }
 }
