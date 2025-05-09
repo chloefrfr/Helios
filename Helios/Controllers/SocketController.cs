@@ -11,7 +11,7 @@ public class SocketController : ControllerBase
     [HttpGet("connected_users")]
     public async Task<IActionResult> ConnectedUsers()
     {
-        var clientSessionsRepo = Constants.repositoryPool.GetRepository<ClientSessions>();
+        var clientSessionsRepo = Constants.repositoryPool.For<ClientSessions>();
         var clients = await clientSessionsRepo.FindAllByTableAsync();
     
         var distinctJids = clients

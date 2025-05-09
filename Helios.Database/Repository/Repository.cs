@@ -18,6 +18,8 @@ using Helios.Database.Mappings;
 using Newtonsoft.Json;
 using Npgsql;
 using NpgsqlTypes;
+using Microsoft.Extensions.Caching.Memory;
+using System.Security.Cryptography;
 
 namespace Helios.Database.Repository
 {
@@ -44,7 +46,12 @@ namespace Helios.Database.Repository
         private readonly int _poolSize = 5; 
         private int _nextConnectionIndex = 0;
 
-        public Repository(string connectionString)
+        private  IMemoryCache _cache;
+        private readonly MemoryCacheEntryOptions _defaultCacheOptions;
+        private bool _cachingEnabled;
+        private readonly string _cacheKeyPrefix;
+
+        public Repository(string connectionString, bool enableCaching = true, TimeSpan? cacheDuration = null)
         {
             _connectionString = connectionString;
             Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
@@ -95,6 +102,13 @@ namespace Helios.Database.Repository
                 _connectionPool[i] = new NpgsqlConnection(_connectionString);
                 _connectionPool[i].Open();
             }
+
+            _cachingEnabled = enableCaching;
+            _cacheKeyPrefix = $"repo:{typeof(TEntity).Name}:";
+            _cache = new MemoryCache(new MemoryCacheOptions());
+            _defaultCacheOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(cacheDuration ?? TimeSpan.FromMinutes(5))
+                .SetSize(1);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -121,31 +135,57 @@ namespace Helios.Database.Repository
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private NpgsqlConnection CreateConnection() => new NpgsqlConnection(_connectionString);
 
-        public async Task<TEntity> FindAsync(TEntity template, int timeout = 500)
+        public async Task<TEntity> FindAsync(TEntity template, int timeout = 500, bool useCache = true)
         {
             var (whereClause, parameters) = BuildFastWhereClause(template);
             if (string.IsNullOrEmpty(whereClause)) 
                 return default;
             
             var sql = _findBaseSql + whereClause + " LIMIT 1";
+            var cacheKey = _cachingEnabled && useCache ? GenerateCacheKey(whereClause, parameters) : null;
+
+            if (_cachingEnabled && useCache && _cache.TryGetValue<TEntity>(cacheKey, out var cachedEntity))
+            {
+                return cachedEntity;
+            }
+
             var conn = GetConnection();
             
             try
             {
-                return await conn.QueryFirstOrDefaultAsync<TEntity>(
+                var entity = await conn.QueryFirstOrDefaultAsync<TEntity>(
                     sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                if (_cachingEnabled && useCache && entity != null)
+                {
+                    _cache.Set(cacheKey, entity, _defaultCacheOptions);
+                }
+
+                return entity;
             }
             catch
             {
                 using var newConn = CreateConnection();
                 await newConn.OpenAsync().ConfigureAwait(false);
-                return await newConn.QueryFirstOrDefaultAsync<TEntity>(
+                var entity = await newConn.QueryFirstOrDefaultAsync<TEntity>(
                     sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                if (_cachingEnabled && useCache && entity != null)
+                {
+                    _cache.Set(cacheKey, entity, _defaultCacheOptions);
+                }
+
+                return entity;
             }
         }
 
         public async Task<int> UpdateAsync(TEntity entity)
         {
+            if (_cachingEnabled)
+            {
+                InvalidateEntityCache(entity);
+            }
+
             var keyProp = _metadata.Properties.FirstOrDefault(p => p.IsKey);
             if (keyProp == null)
                 throw new InvalidOperationException("Entity must have a primary key defined for updates.");
@@ -202,6 +242,11 @@ namespace Helios.Database.Repository
 
         public async Task<int> DeleteAsync(TEntity template)
         {
+            if (_cachingEnabled)
+            {
+                InvalidateEntityCache(template);
+            }
+
             var (whereClause, parameters) = BuildFastWhereClause(template);
             
             if (string.IsNullOrEmpty(whereClause))
@@ -222,7 +267,7 @@ namespace Helios.Database.Repository
             }
         }
 
-        public async Task<IEnumerable<TEntity>> FindAllAsync(TEntity template, int limit = 5000)
+        public async Task<IEnumerable<TEntity>> FindAllAsync(TEntity template, int limit = 5000, bool useCache = true)
         {
             var (whereClause, parameters) = BuildFastWhereClause(template);
             
@@ -230,24 +275,52 @@ namespace Helios.Database.Repository
                 ? $"SELECT {_metadata.AllColumns} FROM {_metadata.TableName} LIMIT {limit}"
                 : _findAllBaseSql + whereClause + $" LIMIT {limit}";
             
+            var cacheKey = _cachingEnabled && useCache ? GenerateCacheKey("FindAll:" + whereClause, parameters, limit) : null;
+
+            if (_cachingEnabled && useCache && _cache.TryGetValue<IEnumerable<TEntity>>(cacheKey, out var cachedEntities))
+            {
+                return cachedEntities;
+            }
+            
             var conn = GetConnection();
             
             try
             {
-                return await conn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
+                var entities = await conn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
+                
+                if (_cachingEnabled && useCache)
+                {
+                    _cache.Set(cacheKey, entities, _defaultCacheOptions);
+                }
+                
+                return entities;
             }
             catch
             {
                 using var newConn = CreateConnection();
                 await newConn.OpenAsync().ConfigureAwait(false);
-                return await newConn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
+                var entities = await newConn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
+                
+                if (_cachingEnabled && useCache)
+                {
+                    _cache.Set(cacheKey, entities, _defaultCacheOptions);
+                }
+                
+                return entities;
             }
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public async Task<List<TEntity>> FindAllByTableAsync(int limit = 5000)
+        public async Task<List<TEntity>> FindAllByTableAsync(int limit = 5000, bool useCache = true)
         {
             var sql = $"SELECT {_metadata.AllColumns} FROM {_metadata.TableName} LIMIT {limit}";
+            var cacheKey = _cachingEnabled && useCache ? $"{_cacheKeyPrefix}AllByTable:{limit}" : null;
+
+            if (_cachingEnabled && useCache && _cache.TryGetValue<List<TEntity>>(cacheKey, out var cachedEntities))
+            {
+                return cachedEntities;
+            }
+
             var conn = GetConnection();
     
             try
@@ -256,7 +329,15 @@ namespace Helios.Database.Repository
                         sql, 
                         commandTimeout: 30) 
                     .ConfigureAwait(false);
-                return result.AsList();
+                
+                var list = result.AsList();
+                
+                if (_cachingEnabled && useCache)
+                {
+                    _cache.Set(cacheKey, list, _defaultCacheOptions);
+                }
+                
+                return list;
             }
             catch
             {
@@ -266,11 +347,19 @@ namespace Helios.Database.Repository
                         sql,
                         commandTimeout: 30)
                     .ConfigureAwait(false);
-                return result.AsList();
+                
+                var list = result.AsList();
+                
+                if (_cachingEnabled && useCache)
+                {
+                    _cache.Set(cacheKey, list, _defaultCacheOptions);
+                }
+                
+                return list;
             }
         }
         
-        public async Task<List<TEntity>> FindManyAsync(TEntity template, int limit = 1000)
+        public async Task<List<TEntity>> FindManyAsync(TEntity template, int limit = 1000, bool useCache = true)
         {
             var (whereClause, parameters) = BuildFastWhereClause(template);
 
@@ -278,24 +367,51 @@ namespace Helios.Database.Repository
                 ? $"SELECT {_metadata.AllColumns} FROM {_metadata.TableName} LIMIT {limit}"
                 : $"{_findBaseSql}{whereClause} LIMIT {limit}";
 
+            var cacheKey = _cachingEnabled && useCache ? GenerateCacheKey("FindMany:" + whereClause, parameters, limit) : null;
+
+            if (_cachingEnabled && useCache && _cache.TryGetValue<List<TEntity>>(cacheKey, out var cachedEntities))
+            {
+                return cachedEntities;
+            }
+
             var conn = GetConnection();
 
             try
             {
                 var result = await conn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
-                return result.AsList();
+                var list = result.AsList();
+                
+                if (_cachingEnabled && useCache)
+                {
+                    _cache.Set(cacheKey, list, _defaultCacheOptions);
+                }
+                
+                return list;
             }
             catch
             {
                 using var newConn = CreateConnection();
                 await newConn.OpenAsync().ConfigureAwait(false);
                 var result = await newConn.QueryAsync<TEntity>(sql, parameters).ConfigureAwait(false);
-                return result.AsList();
+                var list = result.AsList();
+                
+                if (_cachingEnabled && useCache)
+                {
+                    _cache.Set(cacheKey, list, _defaultCacheOptions);
+                }
+                
+                return list;
             }
         }
 
         public async Task<int> SaveAsync(TEntity entity, bool returnId = true)
         {
+            if (_cachingEnabled)
+            {
+                InvalidateEntityCache(entity);
+                InvalidateListCaches();
+            }
+
             var parameters = new Dictionary<string, object>(_metadata.Properties.Count);
             foreach (var accessor in _fastPropertyAccessors)
             {
@@ -346,6 +462,11 @@ namespace Helios.Database.Repository
 
         public async Task BulkInsertAsync(IEnumerable<TEntity> entities)
         {
+            if (_cachingEnabled)
+            {
+                ClearAllCaches();
+            }
+
             using var conn = CreateConnection();
             await conn.OpenAsync().ConfigureAwait(false);
     
@@ -386,6 +507,11 @@ namespace Helios.Database.Repository
         
         public async Task BulkUpdateAsync(IEnumerable<TEntity> entities)
         {
+            if (_cachingEnabled)
+            {
+                ClearAllCaches();
+            }
+
             var keyProp = _metadata.Properties.FirstOrDefault(p => p.IsKey);
             if (keyProp == null)
                 throw new InvalidOperationException("Entity must have a primary key for bulk updates.");
@@ -454,6 +580,168 @@ namespace Helios.Database.Repository
                 await transaction.RollbackAsync().ConfigureAwait(false);
                 throw new InvalidOperationException("Bulk update failed. See inner exception.", ex);
             }
+        }
+
+        public void SetCacheEnabled(bool enabled)
+        {
+            _cachingEnabled = enabled;
+            if (!enabled)
+            {
+                ClearAllCaches();
+            }
+        }
+
+        public void ClearAllCaches()
+        {
+            if (_cache is MemoryCache memoryCache)
+            {
+                var entriesCollection = memoryCache.GetType()
+                    .GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance)?
+                    .GetValue(memoryCache);
+
+                if (entriesCollection is IDictionary<object, object> entries)
+                {
+                    var entriesToRemove = entries.Keys
+                        .Where(k => k.ToString().StartsWith(_cacheKeyPrefix))
+                        .ToList();
+
+                    foreach (var entry in entriesToRemove)
+                    {
+                        memoryCache.Remove(entry);
+                    }
+                }
+                else
+                {
+                    _cache = new MemoryCache(new MemoryCacheOptions());
+                }
+            }
+        }
+
+        public void InvalidateEntityCache(TEntity entity)
+        {
+            if (!_cachingEnabled) return;
+
+            var idProperty = _metadata.Properties.FirstOrDefault(p => p.IsKey);
+            if (idProperty != null)
+            {
+                var idValue = _propertyGetters[idProperty.Name](entity);
+                if (idValue != null)
+                {
+                    var entityCacheKey = $"{_cacheKeyPrefix}entity:{idValue}";
+                    _cache.Remove(entityCacheKey);
+                }
+            }
+
+            var (whereClause, parameters) = BuildFastWhereClause(entity);
+            if (!string.IsNullOrEmpty(whereClause))
+            {
+                var cacheKeyPattern = GenerateCacheKey(whereClause, parameters, includeSalt: false);
+                InvalidateCachesByPattern(cacheKeyPattern);
+            }
+        }
+
+        private void InvalidateListCaches()
+        {
+            if (!_cachingEnabled) return;
+
+            var patterns = new[]
+            {
+                $"{_cacheKeyPrefix}FindAll:",
+                $"{_cacheKeyPrefix}FindMany:",
+                $"{_cacheKeyPrefix}AllByTable:"
+            };
+
+            foreach (var pattern in patterns)
+            {
+                InvalidateCachesByPattern(pattern);
+            }
+        }
+
+        private void InvalidateCachesByPattern(string pattern)
+        {
+            if (_cache is MemoryCache memoryCache)
+            {
+                var entriesField = typeof(MemoryCache).GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (entriesField != null)
+                {
+                    var entries = entriesField.GetValue(memoryCache) as IDictionary<object, object>;
+                    var keysToRemove = entries?.Keys
+                        .Select(k => k.ToString())
+                        .Where(k => k.Contains(pattern))
+                        .ToList();
+
+                    if (keysToRemove != null)
+                    {
+                        foreach (var key in keysToRemove)
+                        {
+                            _cache.Remove(key);
+                        }
+                    }
+                }
+            }
+        }
+
+        private string GenerateCacheKey(string whereClause, Dictionary<string, object> parameters, int? limit = null, bool includeSalt = true)
+        {
+            var sb = StringBuilderCache.Acquire(256);
+            sb.Append(_cacheKeyPrefix);
+            
+            if (whereClause.StartsWith("FindAll:") || whereClause.StartsWith("FindMany:"))
+            {
+                sb.Append(whereClause);
+            }
+            else
+            {
+                sb.Append("entity:");
+                sb.Append(whereClause);
+            }
+            
+            if (parameters != null && parameters.Count > 0)
+            {
+                sb.Append(':');
+                foreach (var param in parameters.OrderBy(p => p.Key))
+                {
+                    sb.Append(param.Key)
+                      .Append('=');
+                    
+                    if (param.Value != null)
+                    {
+                        var valueStr = param.Value.ToString();
+                        if (valueStr.Length > 50) 
+                        {
+                            sb.Append(valueStr.Substring(0, 50));
+                        }
+                        else
+                        {
+                            sb.Append(valueStr);
+                        }
+                    }
+                    else
+                    {
+                        sb.Append("null");
+                    }
+                    
+                    sb.Append(';');
+                }
+            }
+            
+            if (limit.HasValue)
+            {
+                sb.Append(":limit=")
+                  .Append(limit.Value);
+            }
+            
+            if (includeSalt)
+            {
+                using (var sha = SHA256.Create())
+                {
+                    var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(whereClause + JsonConvert.SerializeObject(parameters)));
+                    sb.Append(":hash=")
+                      .Append(BitConverter.ToString(hash).Replace("-", "").Substring(0, 8));
+                }
+            }
+            
+            return StringBuilderCache.GetStringAndRelease(sb);
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -564,6 +852,7 @@ namespace Helios.Database.Repository
             
             return value.Equals(Activator.CreateInstance(type));
         }
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private object ConvertValue(object value)
         {
@@ -632,6 +921,60 @@ namespace Helios.Database.Repository
             var propertyAccess = Expression.Property(objParam, propertyInfo);
             var assign = Expression.Assign(propertyAccess, convertedValue);
             return Expression.Lambda<Action<TEntity, object>>(assign, objParam, valueParam).Compile();
+        }
+        
+        public void SetCacheDuration(TimeSpan duration)
+        {
+            _defaultCacheOptions.SlidingExpiration = duration;
+        }
+
+        public void CacheEntity(TEntity entity)
+        {
+            if (!_cachingEnabled) return;
+            
+            var idProperty = _metadata.Properties.FirstOrDefault(p => p.IsKey);
+            if (idProperty == null) return;
+            
+            var idValue = _propertyGetters[idProperty.Name](entity);
+            if (idValue == null) return;
+            
+            var cacheKey = $"{_cacheKeyPrefix}entity:{idValue}";
+            _cache.Set(cacheKey, entity, _defaultCacheOptions);
+        }
+        
+        public void CacheEntities(IEnumerable<TEntity> entities)
+        {
+            if (!_cachingEnabled) return;
+            
+            var idProperty = _metadata.Properties.FirstOrDefault(p => p.IsKey);
+            if (idProperty == null) return;
+            
+            foreach (var entity in entities)
+            {
+                var idValue = _propertyGetters[idProperty.Name](entity);
+                if (idValue == null) continue;
+                
+                var cacheKey = $"{_cacheKeyPrefix}entity:{idValue}";
+                _cache.Set(cacheKey, entity, _defaultCacheOptions);
+            }
+        }
+        
+        public void Dispose()
+        {
+            foreach (var conn in _connectionPool)
+            {
+                try
+                {
+                    conn?.Close();
+                    conn?.Dispose();
+                }
+                catch
+                {
+                    
+                }
+            }
+            
+            (_cache as IDisposable)?.Dispose();
         }
     }
 }

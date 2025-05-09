@@ -57,9 +57,9 @@ public class XmppClient
         
         var socket = Globals._socketConnections[e.Client.SocketId];
 
-        var clientSessionRepository = Constants.repositoryPool.GetRepository<ClientSessions>();
+        var clientSessionRepository = Constants.repositoryPool.Repo<ClientSessions>();
         var clientSession =
-            await clientSessionRepository.FindAsync(new ClientSessions { SocketId = e.Client.SocketId });
+            await clientSessionRepository().FindAsync(new ClientSessions { SocketId = e.Client.SocketId });
 
         if (clientSession is null || socket is null)
             return;
@@ -114,7 +114,7 @@ public class XmppClient
             // }
 
             clientSession.IsLoggedIn = true;
-            await clientSessionRepository.UpdateAsync(clientSession);
+            await clientSessionRepository().UpdateAsync(clientSession);
     
             Logger.Info($"Successfully logged in as '{clientSession.DisplayName}'");
         }

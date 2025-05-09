@@ -4,6 +4,13 @@
         <TargetFramework>net8.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+
+        <PublishReadyToRun>true</PublishReadyToRun>
+        <PublishTrimmed>false</PublishTrimmed> 
+        <InvariantGlobalization>true</InvariantGlobalization> 
+        <TieredCompilation>false</TieredCompilation> 
+        <ReadyToRunUseCrossgen2>true</ReadyToRunUseCrossgen2>
+        <EnableProfileGuidedOptimization>true</EnableProfileGuidedOptimization>
     </PropertyGroup>
 
     <ItemGroup>

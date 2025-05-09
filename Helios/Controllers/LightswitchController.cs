@@ -53,7 +53,7 @@ public class LightswitchController : ControllerBase
             return AuthenticationErrors.InvalidToken("Failed to decode token").Apply(HttpContext);
         }
 
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var userRepository = Constants.repositoryPool.For<User>();
         User user = await userRepository.FindAsync(new User
         {
             AccountId = accountId

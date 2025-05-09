@@ -16,7 +16,7 @@ namespace Helios.Controllers.MCP;
 
 [ApiController]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/EquipBattleRoyaleCustomization")]
-public class EquipBattleRoyaleCustomizationController : ControllerBase
+public class EquipBattleRoyaleCustomization : ControllerBase
 {
     private static readonly HashSet<string> ValidSlotNames = new(StringComparer.Ordinal)
     {
@@ -24,7 +24,7 @@ public class EquipBattleRoyaleCustomizationController : ControllerBase
     };
 
     [HttpPost]
-    public async Task<IActionResult> EquipBattleRoyaleCustomization(
+    public async Task<IActionResult> Init(
         [FromRoute] string accountId,
         [FromQuery] string profileId)
     {
@@ -68,9 +68,9 @@ public class EquipBattleRoyaleCustomizationController : ControllerBase
         
         int indexWithinSlot = indexWithinSlotProperty.GetInt32();
 
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var profilesRepository = Constants.repositoryPool.GetRepository<Profiles>();
-        var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
+        var userRepository = Constants.repositoryPool.For<User>();
+        var profilesRepository = Constants.repositoryPool.For<Profiles>();
+        var profileItemsRepository = Constants.repositoryPool.For<Items>();
 
         var userTask = userRepository.FindAsync(new User { AccountId = accountId });
         var profileTask = profilesRepository.FindAsync(new Profiles { ProfileId = profileId, AccountId = accountId });

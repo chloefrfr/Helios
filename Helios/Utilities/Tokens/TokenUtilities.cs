@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Helios.Classes.Tokens;
@@ -13,6 +12,8 @@ namespace Helios.Utilities.Tokens
 {
     public static class TokenUtilities
     {
+        private static readonly Random _random = new Random();
+
         private static async Task<string> CreateTokenAsync(string clientId, string grantType, User user, string type)
         {
             var isAccess = type == "access";
@@ -22,12 +23,12 @@ namespace Helios.Utilities.Tokens
             {
                 App = "fortnite",
                 Sub = user.AccountId,
-                Dvid = new Random().Next(1, 1000000000),
+                Dvid = _random.Next(1, 1000000000), 
                 Mver = false,
                 Clid = clientId,
                 Dn = user.Username,
                 Am = type == "access" ? grantType : "refresh",
-                P = Convert.ToBase64String(Guid.NewGuid().ToByteArray()),
+                P = Guid.NewGuid().ToString(), 
                 Iai = user.AccountId,
                 Sec = 1,
                 Clsvc = "fortnite",
@@ -40,14 +41,15 @@ namespace Helios.Utilities.Tokens
 
             var token = JWT.Encode(payload, Encoding.UTF8.GetBytes(Constants.config.JWTClientSecret), JwsAlgorithm.HS256);
 
-            await Constants.repositoryPool
-                .GetRepository<Database.Tables.Account.Tokens>()
-                .SaveAsync(new Database.Tables.Account.Tokens
-                {
-                    Type = $"{type}token",
-                    AccountId = user.AccountId,
-                    Token = token
-                });
+            var tRepo = Constants.repositoryPool.Repo<Database.Tables.Account.Tokens>();
+            var tokenEntry = new Database.Tables.Account.Tokens
+            {
+                Type = $"{type}token",
+                AccountId = user.AccountId,
+                Token = token
+            };
+
+            await tRepo().SaveAsync(tokenEntry); 
 
             return token;
         }

@@ -8,7 +8,7 @@ namespace Helios.Socket.Services;
 
 public class ClientManager : IClientManager
 {
-    public Repository<ClientSessions> Clients { get; set; } = WebSocketConfiguration.repositoryPool.GetRepository<ClientSessions>();
+    public Repository<ClientSessions> Clients { get; set; } = WebSocketConfiguration.repositoryPool.For<ClientSessions>();
 
     public async Task AddClient(ClientSessions client, IWebSocketConnection socket)
     {

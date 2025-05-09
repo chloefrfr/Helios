@@ -10,10 +10,10 @@ public static class GetUserPresence
 {
     public static async Task GetAsync(bool offline, string senderId, string receiverId)
     {
-        var clientSessionsRepo = Constants.repositoryPool.GetRepository<ClientSessions>();
+        var clientSessionsRepo = Constants.repositoryPool.Repo<ClientSessions>();
 
-        var sender = await clientSessionsRepo.FindAsync(new ClientSessions { AccountId = senderId });
-        var receiver = await clientSessionsRepo.FindAsync(new ClientSessions { AccountId = receiverId });
+        var sender = await clientSessionsRepo().FindAsync(new ClientSessions { AccountId = senderId });
+        var receiver = await clientSessionsRepo().FindAsync(new ClientSessions { AccountId = receiverId });
 
         if (sender == null || receiver == null || !Globals._socketConnections.TryGetValue(receiver.SocketId, out var receiverSocket)) return;
 

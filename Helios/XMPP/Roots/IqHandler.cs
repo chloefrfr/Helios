@@ -17,8 +17,8 @@ public class IqHandler
             return;
         
         var attributeId = root.Element.Attribute("id")?.Value;
-        var clientSessionsRepository = Constants.repositoryPool.GetRepository<ClientSessions>();
-        var friendsRepository = Constants.repositoryPool.GetRepository<Friends>();
+        var clientSessionsRepository = Constants.repositoryPool.Repo<ClientSessions>();
+        var friendsRepository = Constants.repositoryPool.Repo<Friends>();
         
         // var existingClientSession =
         //     await clientSessionsRepository.FindAsync(new ClientSessions { AccountId = client.AccountId });
@@ -32,7 +32,7 @@ public class IqHandler
                     client.Resource = resource;
                     client.Jid = $"{client.AccountId}@prod.ol.epicgames.com/{client.Resource}";
                     
-                    await clientSessionsRepository.UpdateAsync(client);
+                    await clientSessionsRepository().UpdateAsync(client);
                     
                     socket.Send(
                         new XElement(XNamespace.Get("jabber:client") + "iq",
@@ -60,7 +60,7 @@ public class IqHandler
                     new XAttribute("type", "result")
                 ).ToString());
                 
-                var user = await friendsRepository.FindAllAsync(new Friends { AccountId = client.AccountId });
+                var user = await friendsRepository().FindAllAsync(new Friends { AccountId = client.AccountId });
                 if (user is null)
                 {
                     Logger.Error($"User '{client.AccountId}' not found.");
@@ -73,7 +73,7 @@ public class IqHandler
                     if (friend.Status != "ACCEPTED")
                         continue;
 
-                    var cl = await clientSessionsRepository.FindAsync(new ClientSessions { AccountId = friend.AccountId });
+                    var cl = await clientSessionsRepository().FindAsync(new ClientSessions { AccountId = friend.AccountId });
                     if (cl is null)
                     {
                         Logger.Error($"Friend with AccountId '{friend.AccountId}' not found.");

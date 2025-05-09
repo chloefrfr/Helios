@@ -12,7 +12,7 @@ namespace Helios.Services
 {
     public class CloudStorageImportService
     {
-        private readonly Repository<CloudStorage> _repository = Constants.repositoryPool.GetRepository<CloudStorage>();
+        private readonly Func<Repository<CloudStorage>> _repository = Constants.repositoryPool.Repo<CloudStorage>();
         
         /// <summary>
         /// Imports CSV data into the CloudStorage table if the table is empty
@@ -22,7 +22,7 @@ namespace Helios.Services
         public async Task<int> ImportFromCsvIfEmptyAsync(string csvFilePath)
         {
             var template = new CloudStorage();
-            var existingData = await _repository.FindManyAsync(template, 1);
+            var existingData = await _repository().FindManyAsync(template, 1);
 
             if (existingData.Count > 0)
                 return 0;
@@ -32,7 +32,7 @@ namespace Helios.Services
             if (records.Count == 0)
                 return 0;
             
-            await _repository.BulkInsertAsync(records);
+            await _repository().BulkInsertAsync(records);
             Logger.Info($"Successfully imported {records.Count} CloudStorage records.");
             return records.Count;
         }

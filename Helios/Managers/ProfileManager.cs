@@ -45,8 +45,8 @@ public static class ProfileManager
         
         try
         {
-            var profileRepository = Constants.repositoryPool.GetRepository<Profiles>();
-            var itemsRepository = Constants.repositoryPool.GetRepository<Items>();
+            var profileRepository = Constants.repositoryPool.Repo<Profiles>();
+            var itemsRepository = Constants.repositoryPool.Repo<Items>();
             
             string cacheKey = $"profile_{accountId}_{type}";
             if (HeliosFastCache.TryGet<Profiles>(cacheKey, out var cachedProfile))
@@ -61,7 +61,7 @@ public static class ProfileManager
                 Revision = 0,
             };
 
-            await profileRepository.SaveAsync(newProfile);
+            await profileRepository().SaveAsync(newProfile);
             
             List<Items> itemsToCreate = new List<Items>();
             
@@ -76,7 +76,7 @@ public static class ProfileManager
             
             if (itemsToCreate.Count > 0)
             {
-                await itemsRepository.BulkInsertAsync(itemsToCreate);
+                await itemsRepository().BulkInsertAsync(itemsToCreate);
             }
             
             HeliosFastCache.Set(cacheKey, newProfile, _defaultCacheExpiration);
@@ -108,8 +108,8 @@ public static class ProfileManager
         
         return await HeliosFastCache.GetOrAddAsync(cacheKey, async () => 
         {
-            var profileRepository = Constants.repositoryPool.GetRepository<Profiles>();
-            return await profileRepository.FindAsync(new Profiles
+            var profileRepository = Constants.repositoryPool.Repo<Profiles>();
+            return await profileRepository().FindAsync(new Profiles
             {
                 AccountId = accountId,
                 ProfileId = type
@@ -129,9 +129,9 @@ public static class ProfileManager
         
         try
         {
-            var profileRepository = Constants.repositoryPool.GetRepository<Profiles>();
+            var profileRepository = Constants.repositoryPool.Repo<Profiles>();
             
-            await profileRepository.UpdateAsync(profile);
+            await profileRepository().UpdateAsync(profile);
             
             string cacheKey = $"profile_{profile.AccountId}_{profile.ProfileId}";
             HeliosFastCache.Set(cacheKey, profile, _defaultCacheExpiration);

@@ -38,7 +38,7 @@ public class ProfileItemGranting
 
     public static async Task GrantAll(string accountId)
     {
-        var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
+        var profileItemsRepository = Constants.repositoryPool.Repo<Items>();
 
         var cosmeticFiles = await Constants.FileProvider.LoadAllCosmeticsAsync(CancellationToken.None); 
         var itemsToSave = new ConcurrentBag<Items>();
@@ -55,7 +55,7 @@ public class ProfileItemGranting
             }
 
             var templateId = $"{cosmeticType}:{cosmeticName}";
-            var existingItem = await profileItemsRepository.FindAsync(new Items
+            var existingItem = await profileItemsRepository().FindAsync(new Items
             {
                 AccountId = accountId,
                 ProfileId = "athena",
@@ -83,10 +83,9 @@ public class ProfileItemGranting
             itemsToSave.Add(newItem);
         }); 
 
-        Console.WriteLine(itemsToSave.Count);
         if (itemsToSave.Count > 0)
         {
-            await profileItemsRepository.BulkInsertAsync(itemsToSave);
+            await profileItemsRepository().BulkInsertAsync(itemsToSave);
         }
     }
     

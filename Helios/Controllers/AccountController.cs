@@ -13,7 +13,7 @@ public class AccountController : ControllerBase
     [HttpGet("account/{accountId}")]
     public async Task<IActionResult> FindAccountById([FromRoute] string accountId)
     {
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var userRepository = Constants.repositoryPool.For<User>();
         User user = await userRepository.FindAsync(new User
         {
             AccountId = accountId
@@ -60,7 +60,7 @@ public class AccountController : ControllerBase
         if (string.IsNullOrEmpty(accountId))
             return BasicErrors.BadRequest.WithMessage("Invalid account id").Apply(HttpContext);
         
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var userRepository = Constants.repositoryPool.For<User>();
         User user = await userRepository.FindAsync(new User
         {
             AccountId = accountId
@@ -92,7 +92,7 @@ public class AccountController : ControllerBase
     [HttpGet("displayName/{username}")]
     public async Task<IActionResult> FindByDisplayName([FromRoute] string username)
     {
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var userRepository = Constants.repositoryPool.For<User>();
         User user = await userRepository.FindAsync(new User
         {
             Username = username

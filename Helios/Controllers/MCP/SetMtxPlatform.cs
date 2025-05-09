@@ -10,13 +10,13 @@ namespace Helios.Controllers.MCP;
 
 [ApiController]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/SetMtxPlatform")]
-public class SetMtxPlatformController : ControllerBase
+public class SetMtxPlatform : ControllerBase
 {
     [HttpPost]
-    public async Task<IActionResult> SetMtxPlatform([FromRoute] string accountId, [FromQuery] string profileId)
+    public async Task<IActionResult> Init([FromRoute] string accountId, [FromQuery] string profileId)
     {
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var profilesRepository = Constants.repositoryPool.GetRepository<Profiles>();
+        var userRepository = Constants.repositoryPool.For<User>();
+        var profilesRepository = Constants.repositoryPool.For<Profiles>();
         
         var userTask = userRepository.FindAsync(new User { AccountId = accountId });
         var profileTask = profilesRepository.FindAsync(new Profiles { ProfileId = profileId, AccountId = accountId });
@@ -45,7 +45,7 @@ public class SetMtxPlatformController : ControllerBase
             return Ok(defaultResponse);
         }
 
-        var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
+        var profileItemsRepository = Constants.repositoryPool.For<Items>();
         var profileItems = await profileItemsRepository.FindAllAsync(new Items
         {
             AccountId = accountId,

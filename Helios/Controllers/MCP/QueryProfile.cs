@@ -22,7 +22,7 @@ namespace Helios.Controllers.MCP;
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/ClaimMfaEnabled")]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/ClientQuestLogin")]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/SetHardcoreModifier")]
-public class QueryProfileController : ControllerBase
+public class QueryProfile : ControllerBase
 {
     private static readonly HashSet<string> DefaultPublicProfiles = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -34,7 +34,7 @@ public class QueryProfileController : ControllerBase
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = null };
 
     [HttpPost]
-    public async Task<IActionResult> QueryProfile(
+    public async Task<IActionResult> Init(
         [FromRoute] string accountId,
         [FromQuery] string profileId,
         [FromHeader(Name = "User-Agent")] string userAgent)
@@ -47,9 +47,9 @@ public class QueryProfileController : ControllerBase
 
         var parsedUserAgent = UserAgentParser.Parse(userAgent);
         
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var profilesRepository = Constants.repositoryPool.GetRepository<Profiles>();
-        
+        var userRepository = Constants.repositoryPool.For<User>();
+        var profilesRepository = Constants.repositoryPool.For<Profiles>();
+
         var now = DateTime.Now;
         var utcNow = DateTime.UtcNow;
         var todayString = now.ToIsoUtcString();
@@ -85,7 +85,7 @@ public class QueryProfileController : ControllerBase
             _ = userRepository.UpdateAsync(user);
         }
 
-        var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
+        var profileItemsRepository = Constants.repositoryPool.For<Items>();
         var profileItems = await profileItemsRepository.FindAllAsync(new Items
         {
             AccountId = accountId,

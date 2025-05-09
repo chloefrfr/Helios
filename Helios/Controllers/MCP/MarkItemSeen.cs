@@ -13,20 +13,20 @@ namespace Helios.Controllers.MCP;
 
 [ApiController]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/MarkItemSeen")]
-public class MarkItemSeenController : ControllerBase
+public class MarkItemSeen : ControllerBase
 {
     private static readonly JsonDocumentOptions JsonOptions = new() { AllowTrailingCommas = true };
 
     [HttpPost]
-    public async Task<IActionResult> MarkItemSeen(
+    public async Task<IActionResult> Init(
         [FromRoute] string accountId,
         [FromQuery] string profileId)
     {
         if (string.IsNullOrEmpty(profileId) || string.IsNullOrEmpty(accountId))
             return MCPErrors.InvalidPayload.Apply(HttpContext);
 
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var profilesRepository = Constants.repositoryPool.GetRepository<Profiles>();
+        var userRepository = Constants.repositoryPool.For<User>();
+        var profilesRepository = Constants.repositoryPool.For<Profiles>();
         var userTask = userRepository.FindAsync(new User { AccountId = accountId });
         var profileTask = profilesRepository.FindAsync(new Profiles { ProfileId = profileId, AccountId = accountId });
 
@@ -91,7 +91,7 @@ public class MarkItemSeenController : ControllerBase
         if (user is null || profile is null)
             return AccountErrors.AccountNotFound(accountId).Apply(HttpContext);
 
-        var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
+        var profileItemsRepository = Constants.repositoryPool.For<Items>();
 
         var itemsTasks = new List<Task<Items>>(itemIds.Count);
         foreach (var itemId in itemIds)

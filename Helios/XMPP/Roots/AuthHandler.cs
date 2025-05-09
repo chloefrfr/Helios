@@ -30,19 +30,18 @@ public class AuthHandler
             return;
         }
 
-        Console.WriteLine(JsonConvert.SerializeObject(authFields, Formatting.Indented));
         string accountId = authFields[1];
 
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var clientSessionsRepository = Constants.repositoryPool.GetRepository<ClientSessions>();
+        var userRepository = Constants.repositoryPool.Repo<User>();
+        var clientSessionsRepository = Constants.repositoryPool.Repo<ClientSessions>();
         
-        if (await clientSessionsRepository.FindAsync(new ClientSessions { AccountId = accountId }) != null)
+        if (await clientSessionsRepository().FindAsync(new ClientSessions { AccountId = accountId }) != null)
         {
             socket.Close();
             return;
         }
         
-        var user = await userRepository.FindAsync(new User { AccountId = accountId });
+        var user = await userRepository().FindAsync(new User { AccountId = accountId });
         if (user == null || user.Banned)
         {
             socket.Send(CreateFailureResponse("not-authorized", "Password not verified"));
@@ -54,7 +53,7 @@ public class AuthHandler
         client.DisplayName = user.Username;
         client.IsAuthenticated = true;
 
-        await clientSessionsRepository.UpdateAsync(client);
+        await clientSessionsRepository().UpdateAsync(client);
         
         Logger.Info($"New XMPP Client logged in as {user.Username}");
         socket.Send(new XElement(

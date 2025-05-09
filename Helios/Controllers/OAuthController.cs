@@ -132,7 +132,7 @@ public class OAuthController : ControllerBase
                 .Apply(HttpContext);
         }
 
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var userRepository = Constants.repositoryPool.For<User>();
         
         var user = await userRepository.FindAsync(new User { Email = username });
         
@@ -189,7 +189,7 @@ public class OAuthController : ControllerBase
         {
             try 
             {
-                var tokensRepository = Constants.repositoryPool.GetRepository<Tokens>();
+                var tokensRepository = Constants.repositoryPool.For<Tokens>();
                 await tokensRepository.DeleteAsync(new Tokens { AccountId = accountId, Type = "accesstoken" });
                 await tokensRepository.DeleteAsync(new Tokens { AccountId = accountId, Type = "refreshtoken" });
             }

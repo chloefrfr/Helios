@@ -18,7 +18,7 @@ public class CloudStorageController : ControllerBase
 {
     private static readonly int CurrentSeason;
     private static readonly string ClientSettingsPath;
-    private readonly Repository<CloudStorage> _cloudStorageRepository = Constants.repositoryPool.GetRepository<CloudStorage>();
+    private readonly Repository<CloudStorage> _cloudStorageRepository = Constants.repositoryPool.For<CloudStorage>();
 
     static CloudStorageController()
     {

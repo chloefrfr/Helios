@@ -43,8 +43,8 @@ public class TestController : ControllerBase
             return BadRequest(new { error = "invalid request" });
         }
 
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var loadoutsRepository = Constants.repositoryPool.GetRepository<Loadouts>();
+        var userRepository = Constants.repositoryPool.For<User>();
+        var loadoutsRepository = Constants.repositoryPool.For<Loadouts>();
 
         if (await userRepository.FindAsync(new User { Username = body.Username }) is not null)
         {
@@ -112,7 +112,7 @@ public class TestController : ControllerBase
     [HttpGet("yes")]
     public async Task<IActionResult> GrantTest()
     {
-        var fRepo = Constants.repositoryPool.GetRepository<Friends>();
+        var fRepo = Constants.repositoryPool.For<Friends>();
         await fRepo.SaveAsync(new Friends
         {
             

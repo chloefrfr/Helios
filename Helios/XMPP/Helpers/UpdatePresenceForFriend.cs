@@ -13,10 +13,10 @@ public static class UpdatePresenceForFriend
 {
     public static async Task UpdateAsync(IWebSocketConnection socket, XElement status, bool offline, bool away)
     {
-        var clientSessionsRepo = Constants.repositoryPool.GetRepository<ClientSessions>();
-        var friendsRepo = Constants.repositoryPool.GetRepository<Friends>();
+        var clientSessionsRepo = Constants.repositoryPool.Repo<ClientSessions>();
+        var friendsRepo = Constants.repositoryPool.Repo<Friends>();
 
-        var sender = await clientSessionsRepo.FindAsync(new ClientSessions { SocketId = socket.ConnectionInfo.Id });
+        var sender = await clientSessionsRepo().FindAsync(new ClientSessions { SocketId = socket.ConnectionInfo.Id });
         if (sender == null) return;
 
         var lastPresence = JsonConvert.DeserializeObject<LastPresenceUpdate>(sender.LastPresenceUpdate) ?? new LastPresenceUpdate();
@@ -24,14 +24,14 @@ public static class UpdatePresenceForFriend
         lastPresence.StatusString = status == null ? lastPresence.StatusString : status.Value;
         
         sender.LastPresenceUpdate = JsonConvert.SerializeObject(lastPresence);
-        await clientSessionsRepo.UpdateAsync(sender);
+        await clientSessionsRepo().UpdateAsync(sender);
 
-        var friends = await friendsRepo.FindAllAsync(new Friends { AccountId = sender.AccountId });
+        var friends = await friendsRepo().FindAllAsync(new Friends { AccountId = sender.AccountId });
         if (friends == null) return;
 
         foreach (var friend in friends.Where(f => f.Status == "ACCEPTED"))
         {
-            var client = await clientSessionsRepo.FindAsync(new ClientSessions { AccountId = friend.AccountId });
+            var client = await clientSessionsRepo().FindAsync(new ClientSessions { AccountId = friend.AccountId });
             if (client == null || !Globals._socketConnections.TryGetValue(client.SocketId, out var friendSocket)) continue;
 
             var presence = BuildPresenceXml(sender.Jid, client.Jid, lastPresence, offline);

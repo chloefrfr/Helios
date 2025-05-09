@@ -12,7 +12,7 @@ public class AccessController : ControllerBase
     [HttpPost("tryPlayOnPlatform/account/{accountId}")]
     public async Task<IActionResult> TryPlayOnPlatform([FromRoute] string accountId)
     {
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var userRepository = Constants.repositoryPool.For<User>();
         User user = await userRepository.FindAsync(new User
         {
             AccountId = accountId
@@ -43,7 +43,7 @@ public class AccessController : ControllerBase
     [HttpPost("grant_access/{accountId}")]
     public async Task<IActionResult> GrantAccess([FromRoute] string accountId)
     {
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
+        var userRepository = Constants.repositoryPool.For<User>();
         User user = await userRepository.FindAsync(new User
         {
             AccountId = accountId

@@ -17,7 +17,7 @@ namespace Helios.Controllers.MCP;
 
 [ApiController]
 [Route("/fortnite/api/game/v2/profile/{accountId}/client/SetCosmeticLockerSlot")]
-public class SetCosmeticLockerSlotController : ControllerBase
+public class SetCosmeticLockerSlot : ControllerBase
 {
     private static readonly Dictionary<string, Action<Loadouts, string>> CategoryPropertyMap = new(9)
     {
@@ -38,7 +38,7 @@ public class SetCosmeticLockerSlotController : ControllerBase
     };
 
     [HttpPost]
-    public async Task<IActionResult> SetCosmeticLockerSlot(
+    public async Task<IActionResult> Init(
         [FromRoute] string accountId,
         [FromQuery] string profileId,
         [FromHeader(Name = "User-Agent")] string userAgent)
@@ -72,10 +72,10 @@ public class SetCosmeticLockerSlotController : ControllerBase
         
         int slotIndex = slotIndexProperty.GetInt32();
 
-        var userRepository = Constants.repositoryPool.GetRepository<User>();
-        var profilesRepository = Constants.repositoryPool.GetRepository<Profiles>();
-        var profileItemsRepository = Constants.repositoryPool.GetRepository<Items>();
-        var loadoutsRepository = Constants.repositoryPool.GetRepository<Loadouts>();
+        var userRepository = Constants.repositoryPool.For<User>();
+        var profilesRepository = Constants.repositoryPool.For<Profiles>();
+        var profileItemsRepository = Constants.repositoryPool.For<Items>();
+        var loadoutsRepository = Constants.repositoryPool.For<Loadouts>();
         
         var userTask = userRepository.FindAsync(new User { AccountId = accountId });
         var profileTask = profilesRepository.FindAsync(new Profiles { ProfileId = profileId, AccountId = accountId });
