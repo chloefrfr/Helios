@@ -43,8 +43,9 @@ namespace Helios
 
             var app = builder.Build();
             
-            var test = app.Services.GetRequiredService<XmppClient>();
-            await test.StartAsync();
+            var xmppClient = app.Services.GetRequiredService<XmppClient>();
+            await xmppClient.StartAsync();
+            Constants.GlobalXmppClientService = xmppClient;
 
             Task fileProviderTask = InitializeFileProvider(app);
 

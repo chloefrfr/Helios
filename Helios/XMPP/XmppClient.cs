@@ -9,6 +9,7 @@ using Helios.Socket.Events;
 using Helios.Utilities;
 using Helios.XMPP.Roots;
 using Newtonsoft.Json;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 using WebSocketServer = Helios.Socket.WebSocketServer;
 
 namespace Helios.XMPP;
@@ -41,7 +42,62 @@ public class XmppClient
         
         _server.Start();
     }
-    
+
+    public async Task ForwardStanzaAsync(string accountId, string body)
+    {
+        var sessionRepo = Constants.repositoryPool.Repo<ClientSessions>();
+
+        var clientSession = await sessionRepo().FindAsync(new ClientSessions { AccountId = accountId });
+
+        if (clientSession is null)
+            return;
+        
+        Logger.Debug($"SocketId: {clientSession.SocketId}");
+        
+        var stanza = new XElement(XNamespace.Get("jabber:client") + "message",
+            new XAttribute("from", "xmpp-admin@prod.ol.epicgames.com"),
+            new XAttribute("to", clientSession.Jid),
+            new XAttribute("xmlns", "jabber:client"),
+            new XElement("body", body)
+        );
+
+        await _server.SendToClient(clientSession.SocketId, stanza.ToString()); 
+    }
+
+    public async Task ForwardPresenceStanzaAsync(string senderId, string receiverId, bool isOffline)
+    {
+        var sessionRepo = Constants.repositoryPool.Repo<ClientSessions>();
+
+        var senderTask = sessionRepo().FindAsync(new ClientSessions { AccountId = senderId });
+        var receiverTask = sessionRepo().FindAsync(new ClientSessions { AccountId = receiverId });
+
+        await Task.WhenAll(senderTask, receiverTask);
+
+        var sender = senderTask.Result;
+        var receiver = receiverTask.Result;
+
+        if (sender?.Jid is not string fromJid || receiver?.Jid is not string toJid)
+            return;
+
+        var lastPresence = JsonSerializer.Deserialize<LastPresenceUpdate>(sender.LastPresenceUpdate) ?? new LastPresenceUpdate();
+
+        var presenceStanza = new XElement("presence",
+            new XAttribute("from", fromJid),
+            new XAttribute("to", toJid),
+            new XAttribute("type", isOffline ? "unavailable" : "available")
+        );
+
+        if (!string.IsNullOrEmpty(lastPresence.StatusString))
+        {
+            if (lastPresence.IsAway)
+                presenceStanza.Add(new XElement("show", "away"));
+
+            presenceStanza.Add(new XElement("status", lastPresence.StatusString));
+        }
+
+        await _server.SendToClient(receiver.SocketId, presenceStanza.ToString(SaveOptions.DisableFormatting));
+    }
+
     private static void Server_ClientConnected(object sender, ClientConnectedEventArgs e)
     {
         Logger.Info($"Client connected: {e.Client.SocketId}");

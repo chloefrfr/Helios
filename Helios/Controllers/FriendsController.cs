@@ -2,7 +2,9 @@
 using Helios.Database.Tables.Account;
 using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
+using Helios.Utilities.Extensions;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 
 namespace Helios.Controllers;
 
@@ -143,30 +145,68 @@ public class FriendsController : ControllerBase
             return AccountErrors.AccountNotFound(accountId)
                 .WithMessage("User or friend not found.")
                 .Apply(HttpContext);
-
+        
         try
         {
             var existingFriendEntry = await friendRepo.FindAsync(new Friends { AccountId = friendId, FriendId = accountId });
             var reverseFriendEntry = await friendRepo.FindAsync(new Friends { AccountId = accountId, FriendId = friendId });
-
+            
             if (existingFriendEntry != null && reverseFriendEntry != null)
             {
                 if (existingFriendEntry.Status == StatusAccepted)
-                {
                     return FriendsErrors.RequestAlreadySent
                         .WithMessage($"Friendship between {accountId} and {friendId} already exists.")
                         .Apply(HttpContext);
-                }
-
+                
                 if (existingFriendEntry.Status == StatusPending)
                 {
                     existingFriendEntry.Status = reverseFriendEntry.Status = StatusAccepted;
                     existingFriendEntry.Direction = reverseFriendEntry.Direction = DirectionOutbound;
 
-                    await friendRepo.UpdateAsync(existingFriendEntry);
-                    await friendRepo.UpdateAsync(reverseFriendEntry);
+                    await Task.WhenAll(
+                        friendRepo.UpdateAsync(existingFriendEntry),
+                        friendRepo.UpdateAsync(reverseFriendEntry));
                     
-                    // TODO: Send xmpp stanza here
+                    var timestamp = DateTime.UtcNow.ToIsoUtcString();
+
+                    var outboundStanza = new
+                    {
+                        payload = new
+                        {
+                            accountId = friend.AccountId,
+                            status = "ACCEPTED",
+                            direction = "OUTBOUND",
+                            created = timestamp,
+                            favorite = false
+                        },
+                        type = "com.epicgames.friends.core.apiobjects.Friend",
+                        timestamp
+                    };
+
+                    var inboundStanza = new
+                    {
+                        payload = new
+                        {
+                            accountId = user.AccountId,
+                            status = "ACCEPTED",
+                            direction = "INBOUND",
+                            created = timestamp,
+                            favorite = false
+                        },
+                        type = "com.epicgames.friends.core.apiobjects.Friend",
+                        timestamp
+                    };
+
+                    var outboundJson = JsonConvert.SerializeObject(outboundStanza);
+                    var inboundJson = JsonConvert.SerializeObject(inboundStanza);
+                    
+                    await Task.WhenAll(
+                        Constants.GlobalXmppClientService.ForwardStanzaAsync(outboundJson, user.AccountId),
+                        Constants.GlobalXmppClientService.ForwardStanzaAsync(inboundJson, friend.AccountId),
+                        
+                        Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(user.AccountId, friend.AccountId, false),
+                        Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(friend.AccountId, user.AccountId, false)
+                    );
 
                     return NoContent();
                 }
