@@ -61,7 +61,7 @@ public class XmppClient
             new XElement("body", body)
         );
 
-        await _server.SendToClient(clientSession.SocketId, stanza.ToString()); 
+        await _server.SendToClient(clientSession.SocketId, stanza.ToString(SaveOptions.DisableFormatting)); 
     }
 
     public async Task ForwardPresenceStanzaAsync(string senderId, string receiverId, bool isOffline)
