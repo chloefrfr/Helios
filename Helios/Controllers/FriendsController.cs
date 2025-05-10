@@ -1,5 +1,6 @@
 ﻿using Helios.Configuration;
 using Helios.Database.Tables.Account;
+using Helios.Managers;
 using Helios.Utilities;
 using Helios.Utilities.Errors.HeliosErrors;
 using Helios.Utilities.Extensions;
@@ -150,7 +151,8 @@ public class FriendsController : ControllerBase
         {
             var existingFriendEntry = await friendRepo.FindAsync(new Friends { AccountId = friendId, FriendId = accountId });
             var reverseFriendEntry = await friendRepo.FindAsync(new Friends { AccountId = accountId, FriendId = friendId });
-            
+            var timestamp = DateTime.UtcNow.ToIsoUtcString();
+
             if (existingFriendEntry != null && reverseFriendEntry != null)
             {
                 if (existingFriendEntry.Status == StatusAccepted)
@@ -163,47 +165,19 @@ public class FriendsController : ControllerBase
                     existingFriendEntry.Status = reverseFriendEntry.Status = StatusAccepted;
                     existingFriendEntry.Direction = reverseFriendEntry.Direction = DirectionOutbound;
 
+    
                     await Task.WhenAll(
                         friendRepo.UpdateAsync(existingFriendEntry),
-                        friendRepo.UpdateAsync(reverseFriendEntry));
-                    
-                    var timestamp = DateTime.UtcNow.ToIsoUtcString();
+                        friendRepo.UpdateAsync(reverseFriendEntry)
+                    );
 
-                    var outboundStanza = new
-                    {
-                        payload = new
-                        {
-                            accountId = friend.AccountId,
-                            status = "ACCEPTED",
-                            direction = "OUTBOUND",
-                            created = timestamp,
-                            favorite = false
-                        },
-                        type = "com.epicgames.friends.core.apiobjects.Friend",
-                        timestamp
-                    };
+                    var outboundStanza = FriendsManager.CreateStanzaPayload(friend.AccountId, "ACCEPTED", "OUTBOUND", timestamp);
+                    var inboundStanza = FriendsManager.CreateStanzaPayload(user.AccountId, "ACCEPTED", "OUTBOUND", timestamp);
 
-                    var inboundStanza = new
-                    {
-                        payload = new
-                        {
-                            accountId = user.AccountId,
-                            status = "ACCEPTED",
-                            direction = "INBOUND",
-                            created = timestamp,
-                            favorite = false
-                        },
-                        type = "com.epicgames.friends.core.apiobjects.Friend",
-                        timestamp
-                    };
-
-                    var outboundJson = JsonConvert.SerializeObject(outboundStanza);
-                    var inboundJson = JsonConvert.SerializeObject(inboundStanza);
-                    
                     await Task.WhenAll(
-                        Constants.GlobalXmppClientService.ForwardStanzaAsync(outboundJson, user.AccountId),
-                        Constants.GlobalXmppClientService.ForwardStanzaAsync(inboundJson, friend.AccountId),
-                        
+                        FriendsManager.SendStanzaAsync(user.AccountId, outboundStanza),
+                        FriendsManager.SendStanzaAsync(friend.AccountId, inboundStanza),
+
                         Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(user.AccountId, friend.AccountId, false),
                         Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(friend.AccountId, user.AccountId, false)
                     );
@@ -211,6 +185,19 @@ public class FriendsController : ControllerBase
                     return NoContent();
                 }
             }
+            
+            await Task.WhenAll(
+                FriendsManager.CreateFriendshipAsync(user.AccountId, friend.AccountId),
+                FriendsManager.CreateFriendshipAsync(friend.AccountId, user.AccountId)
+            );
+
+            var outboundPendingStanza = FriendsManager.CreateStanzaPayload(friend.AccountId, "PENDING", "OUTBOUND", timestamp);
+            var inboundPendingStanza = FriendsManager.CreateStanzaPayload(user.AccountId, "PENDING", "INBOUND", timestamp);
+
+            await Task.WhenAll(
+                FriendsManager.SendStanzaAsync(user.AccountId, outboundPendingStanza),
+                FriendsManager.SendStanzaAsync(friend.AccountId, inboundPendingStanza)
+            );
 
             return NoContent();
         }
