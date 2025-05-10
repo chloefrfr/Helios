@@ -13,6 +13,7 @@ using Helios.Utilities.Errors.HeliosErrors;
 using Helios.Utilities.Middleware;
 using Helios.XMPP;
 using Microsoft.AspNetCore.Diagnostics;
+using Serilog;
 
 namespace Helios
 {
@@ -34,7 +35,7 @@ namespace Helios
                 options.AddServerHeader = false;
                 options.AllowSynchronousIO = false;
             });
-
+            
             ServiceConfiguration.ConfigureServices(builder.Services, builder.Environment);
             LoggingConfiguration.ConfigureLogging(builder.Logging, builder.Configuration);
             WebhostConfiguration.ConfigureWebhosts(builder.WebHost);
@@ -52,7 +53,7 @@ namespace Helios
             app.UseHttpsRedirection();
             app.UseCors("AllowAll");
             app.UseAuthorization();
-
+            
             ConfigureErrorHandling(app);
             
             app.UseMiddleware<RequestLoggingMiddleware>();

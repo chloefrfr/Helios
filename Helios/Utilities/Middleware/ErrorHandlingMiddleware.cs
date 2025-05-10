@@ -38,6 +38,7 @@ public class ErrorHandlingMiddleware
             }
             catch (Exception ex)
             {
+                Logger.Error($"Error: {ex.Message}\n{ex.StackTrace}");
                 await responseHandler.HandleExceptionAsync(context, ex);
             }
         }

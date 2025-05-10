@@ -196,8 +196,7 @@ public class WebSocketServer : IWebSocketServer, IDisposable
                 new ClientSessions { SocketId = socket.ConnectionInfo.Id });
             
             if (clientSession == null) return;
-
-
+            
             OnMessageReceived(new MessageReceivedEventArgs
             {
                 Client = clientSession,

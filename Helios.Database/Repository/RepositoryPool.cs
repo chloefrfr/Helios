@@ -14,9 +14,9 @@ namespace Helios.Database.Repository
             _connectionUrl = connectionUrl;
         }
 
-        public Repository<T> For<T>() where T : BaseTable, new()
+        public Repository<T> For<T>(bool cachingEnabled = true) where T : BaseTable, new()
         {
-            return RepositoryCache<T>.Instance ??= new Repository<T>(_connectionUrl, true, TimeSpan.FromMinutes(20));
+            return RepositoryCache<T>.Instance ??= new Repository<T>(_connectionUrl, cachingEnabled, TimeSpan.FromHours(8));
         }
 
         public Func<Repository<T>> Repo<T>() where T : BaseTable, new()

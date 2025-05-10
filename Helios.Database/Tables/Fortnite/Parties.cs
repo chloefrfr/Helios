@@ -1,4 +1,5 @@
-﻿using Helios.Database.Attributes;
+﻿using System.Text.Json.Serialization;
+using Helios.Database.Attributes;
 using Newtonsoft.Json;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 
@@ -28,15 +29,15 @@ public class PartyMember
 
 public class PartyMemberConnection
 {
-    [JsonProperty("id")]
+    [JsonPropertyName("id")]
     public string Id { get; set; }
-    [JsonProperty("connected_at")]
+    [JsonPropertyName("connected_at")]
     public string ConnectedAt { get; set; }
-    [JsonProperty("updated_at")]
+    [JsonPropertyName("updated_at")]
     public string UpdatedAt { get; set; }
-    [JsonProperty("yield_leadership")]
+    [JsonPropertyName("yield_leadership")]
     public bool YieldLeadership { get; set; }
-    [JsonProperty("meta")]
+    [JsonPropertyName("meta")]
     public Dictionary<string, dynamic> Meta { get; set; }
 }
 
@@ -63,11 +64,11 @@ public class PartyInvite
 [Entity("parties")]
 public class Parties : BaseTable
 {
-    [Column("party_id")]
+    [Column("partyId")]
     public string PartyId { get; set; }
-    [Column("created_at")]
+    [Column("createdAt")]
     public string CreatedAt { get; set; }
-    [Column("updated_at")]
+    [Column("updatedAt")]
     public string UpdatedAt { get; set; }
     [Column("config")]
     public string Config { get; set; } 
@@ -76,9 +77,11 @@ public class Parties : BaseTable
     [Column("applicants")]
     public string[] Applicants { get; set; } = Array.Empty<string>();   
     [Column("meta")]
-    public Dictionary<string, string> Meta { get; set; }
+    public string Meta { get; set; }
     [Column("invites")]
     public string Invites { get; set; } = JsonSerializer.Serialize(new PartyInvite());
     [Column("revision")] 
     public int Revision { get; set; } = 0;
+    [Column("intentions")]
+    public string[] Intentions { get; set; } = Array.Empty<string>();   
 }

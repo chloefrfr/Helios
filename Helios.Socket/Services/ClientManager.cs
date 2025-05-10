@@ -30,7 +30,7 @@ public class ClientManager : IClientManager
         if (session != null)
         {
             Globals._socketConnections.Remove(session.SocketId);
-            await Clients.DeleteAsync(session);
+            await Clients.DeleteAsync(new ClientSessions { SocketId = socketId });
             
             Logger.Info($"Removed client {session.SocketId}");
         }
