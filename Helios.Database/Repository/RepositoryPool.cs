@@ -19,9 +19,9 @@ namespace Helios.Database.Repository
             return RepositoryCache<T>.Instance ??= new Repository<T>(_connectionUrl, cachingEnabled, TimeSpan.FromHours(8));
         }
 
-        public Func<Repository<T>> Repo<T>() where T : BaseTable, new()
+        public Func<Repository<T>> Repo<T>(bool cachingEnabled = true) where T : BaseTable, new()
         {
-            return RepositoryCache<T>.CachedFactory ??= () => For<T>();
+            return RepositoryCache<T>.CachedFactory ??= () => For<T>(cachingEnabled);
         }
     }
 }

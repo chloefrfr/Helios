@@ -12,28 +12,30 @@ public class ClientManager : IClientManager
 
     public async Task AddClient(ClientSessions client, IWebSocketConnection socket)
     {
-        // if (client.Socket == null)
-        //     throw new ArgumentNullException(nameof(client.Socket));
+        if (socket == null)
+            throw new ArgumentNullException(nameof(socket));
+
+        var existingClient = await Clients.FindAsync(new ClientSessions { AccountId = client.AccountId });
+        if (existingClient != null)
+        {
+            Globals._socketConnections.Remove(existingClient.SocketId);
+            await Clients.DeleteByColumnAsync("socketid", existingClient.SocketId);
+        }
 
         await Clients.SaveAsync(client).ConfigureAwait(false);
         Globals._socketConnections[client.SocketId] = socket;
     }
 
+
     public async Task RemoveClient(string accountId)
     {
-        await Clients.DeleteAsync(new ClientSessions { AccountId = accountId }).ConfigureAwait(false);
+        await Clients.DeleteAsync(new ClientSessions { AccountId = accountId });
     }
     
     public async Task RemoveClient(Guid socketId)
     {
-        var session = await Clients.FindAsync(new ClientSessions { SocketId = socketId });
-        if (session != null)
-        {
-            Globals._socketConnections.Remove(session.SocketId);
-            await Clients.DeleteAsync(new ClientSessions { SocketId = socketId });
-            
-            Logger.Info($"Removed client {session.SocketId}");
-        }
+        Globals._socketConnections.Remove(socketId);
+        if (!await Clients.DeleteByColumnAsync("socketid", socketId)) return;
     }
 
     public async Task RemoveClient(IWebSocketConnection connection)

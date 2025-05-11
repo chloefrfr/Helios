@@ -227,6 +227,45 @@ namespace Helios.Database.Repository
             }
         }
         
+        public async Task<bool> DeleteByColumnAsync(string columnName, object value, int timeout = 500, bool useCache = true)
+        {
+            var property = _metadata.Properties.FirstOrDefault(p => 
+                p.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase) || 
+                p.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+
+            if (property == null)
+                throw new ArgumentException($"Column or property '{columnName}' not found", nameof(columnName));
+
+            var sql = _deleteBaseSql + property.ColumnName + " = @Value";
+            var parameters = new { Value = ConvertValue(value) };
+            var cacheKey = _cachingEnabled && useCache ? $"{_cacheKeyPrefix}deleteby:{property.ColumnName}:{value}" : null;
+
+            if (_cachingEnabled && useCache && _cache.TryGetValue<TEntity>(cacheKey, out var cachedEntity))
+            {
+                _cache.Remove(cacheKey); 
+            }
+
+            var conn = GetConnection();
+
+            try
+            {
+                var rowsAffected = await conn.ExecuteAsync(
+                    sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                return rowsAffected > 0;
+            }
+            catch
+            {
+                using var newConn = CreateConnection();
+                await newConn.OpenAsync().ConfigureAwait(false);
+
+                var rowsAffected = await newConn.ExecuteAsync(
+                    sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                return rowsAffected > 0;
+            }
+        }
+        
         public async Task<IEnumerable<TEntity>> FindAllByColumnAsync(string columnName, IEnumerable<object> values, int timeout = 500, bool useCache = true)
         {
             var property = _metadata.Properties.FirstOrDefault(p =>

@@ -47,6 +47,9 @@ namespace Helios
             var xmppClient = app.Services.GetRequiredService<XmppClient>();
             await xmppClient.StartAsync();
             Constants.GlobalXmppClientService = xmppClient;
+            
+            var partyManager = app.Services.GetRequiredService<PartyManager>();
+            await partyManager.InitializeAsync();
 
             Task fileProviderTask = InitializeFileProvider(app);
 
@@ -73,7 +76,7 @@ namespace Helios
             var hotfixesCsv = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "hotfixes.csv");
             var importService = new CloudStorageImportService();
             await importService.ImportFromCsvIfEmptyAsync(hotfixesCsv);
-
+            
             Logger.Info($"Helios is running on: {builder.Configuration["ASPNETCORE_URLS"]}");
 
             await app.RunAsync();

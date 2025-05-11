@@ -2,6 +2,7 @@
 using System.Threading.RateLimiting;
 using Helios.Classes.Response;
 using Helios.HTTP.Utilities.Extensions;
+using Helios.Managers;
 using Helios.Managers.Unreal;
 using Helios.Services;
 using Helios.Utilities.Exceptions;
@@ -28,6 +29,7 @@ public static class ServiceConfiguration
         
         services.AddScoped<ApiResponseHandler>();
         services.AddSingleton<XmppClient>();
+        services.AddSingleton<PartyManager>();
         
         services.AddLogging(builder => builder.AddSerilog());
 
