@@ -25,8 +25,7 @@ public class ClientManager : IClientManager
         await Clients.SaveAsync(client).ConfigureAwait(false);
         Globals._socketConnections[client.SocketId] = socket;
     }
-
-
+    
     public async Task RemoveClient(string accountId)
     {
         await Clients.DeleteAsync(new ClientSessions { AccountId = accountId });

@@ -14,31 +14,25 @@ namespace Helios.Managers.Helpers;
 
 public class ProfileBuilder : MCPProfile
 {
-    // Pre-initialize static resources
     private static readonly JsonDocumentOptions JsonOptions = new() { AllowTrailingCommas = true };
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
     
-    // Cache common strings to reduce allocations
     private const string LoadoutKeyword = "loadout";
     private const string CosmeticLockerType = "CosmeticLocker:cosmeticlocker_athena";
     private const string EmptyJson = "{}";
     
     public ProfileBuilder(string accountId, Profiles profile, User user, List<Items> profileItems)
     {
-        // Get timestamp once
         var timestamp = DateTime.UtcNow.ToIsoUtcString();
         Created = Updated = timestamp;
 
-        // Setup initial capacity based on items count
         SetupCoreProfile(accountId, profile, profileItems.Count);
         
-        // Process all items at once
         GenerateItems(profileItems);
     }
 
     private void SetupCoreProfile(string accountId, Profiles profile, int initialItemCapacity)
     {
-        // Set all properties directly
         Rvn = profile.Revision;
         WipeNumber = 1;
         AccountId = accountId;
@@ -46,24 +40,20 @@ public class ProfileBuilder : MCPProfile
         Version = "no_version";
         CommandRevision = profile.Revision;
         
-        // Initialize collections with appropriate capacity
         Items = new Dictionary<string, dynamic>(initialItemCapacity);
-        Stats = new { attributes = new Dictionary<string, JsonElement>(initialItemCapacity / 3) }; // Estimate attribute count
+        Stats = new { attributes = new Dictionary<string, JsonElement>(initialItemCapacity / 3) };
     }
 
     private void GenerateItems(List<Items> profileItems)
     {
-        // Process items in a single pass
         int count = profileItems.Count;
         for (int i = 0; i < count; i++)
         {
             var item = profileItems[i];
             
-            // Skip invalid items early
             if (string.IsNullOrEmpty(item.TemplateId)) continue;
             if (string.IsNullOrEmpty(item.Value)) continue;
 
-            // Process based on type
             if (item.IsAttribute)
             {
                 HandleAttribute(item);

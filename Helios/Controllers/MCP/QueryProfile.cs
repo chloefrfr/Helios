@@ -47,8 +47,8 @@ public class QueryProfile : ControllerBase
 
         var parsedUserAgent = UserAgentParser.Parse(userAgent);
         
-        var userRepository = Constants.repositoryPool.For<User>();
-        var profilesRepository = Constants.repositoryPool.For<Profiles>();
+        var userRepository = Constants.repositoryPool.For<User>(false);
+        var profilesRepository = Constants.repositoryPool.For<Profiles>(false);
 
         var now = DateTime.Now;
         var utcNow = DateTime.UtcNow;
@@ -90,7 +90,7 @@ public class QueryProfile : ControllerBase
         {
             AccountId = accountId,
             ProfileId = profileId,
-        });
+        }, useCache: false);
 
         var itemsList = profileItems.ToList();
 
@@ -119,11 +119,11 @@ public class QueryProfile : ControllerBase
                 changeType = "fullProfileUpdate",
                 profile = new
                 {
-                    _id = $"common_public-{accountId}",
+                    _id = $"{profileId}-{accountId}",
                     created = utcNowString,
                     updated = utcNowString,
                     rvn = 0,
-                    profileId = "common_public",
+                    profileId,
                     accountId
                 }
             }
