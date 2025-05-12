@@ -546,14 +546,15 @@ public class PartyController : ControllerBase
         var sessionsRepo = Constants.repositoryPool.For<ClientSessions>();
         var accountIds = deserializedPartyMembers.Select(m => m.AccountId).ToList();
         var clients = await sessionsRepo.FindAllByColumnAsync("accountid", accountIds);
-        var clientMap = clients.ToDictionary(c => c.AccountId);
-
+        var clientMap = clients.GroupBy(c => c.AccountId)
+            .ToDictionary(g => g.Key, g => g.First());
+        
         foreach (var member in deserializedPartyMembers)
         {
             if (!clientMap.TryGetValue(member.AccountId, out var client) ||
                 !Globals._socketConnections.TryGetValue(client.SocketId, out var clientSocket))
                 continue;
-            
+
             var xmlMemberJoined = PartyManager.CreateXmlMessage(client.Jid, jsonMemberJoined);
             var xmlPartyUpdated = PartyManager.CreateXmlMessage(client.Jid, jsonPartyUpdated);
 
@@ -592,17 +593,6 @@ public class PartyController : ControllerBase
         party.UpdatedAt = timestamp;
         party.Members = JsonSerializer.Serialize(partyMembers);
 
-        var accountIds = partyMembers.Select(m => m.AccountId).ToList();
-        var clients = await Constants.repositoryPool.For<ClientSessions>()
-            .FindAllByColumnAsync("accountid", accountIds);
-
-        var socketMap = clients
-            .Where(c => Globals._socketConnections.ContainsKey(c.SocketId))
-            .ToDictionary(
-                c => c.AccountId,
-                c => new { Client = c, Socket = Globals._socketConnections[c.SocketId] }
-            );
-
         var memberLeftBody = JsonConvert.SerializeObject(new
         {
             account_id = removedMember.AccountId,
@@ -621,6 +611,23 @@ public class PartyController : ControllerBase
             new XElement("body", memberLeftBody)
         );
 
+        if (partyMembers.Count == 0)
+        {
+            await pRepo.DeleteByColumnAsync("partyid", party.PartyId);
+            return Ok();
+        }
+
+        var accountIds = partyMembers.Select(m => m.AccountId).ToList();
+        var clients = await Constants.repositoryPool.For<ClientSessions>()
+            .FindAllByColumnAsync("accountid", accountIds);
+
+        var socketMap = clients
+            .Where(c => Globals._socketConnections.ContainsKey(c.SocketId))
+            .ToDictionary(
+                c => c.AccountId,
+                c => new { Client = c, Socket = Globals._socketConnections[c.SocketId] }
+            );
+
         foreach (var member in partyMembers)
         {
             if (!socketMap.TryGetValue(member.AccountId, out var clientInfo))
@@ -631,19 +638,13 @@ public class PartyController : ControllerBase
             clientInfo.Socket.Send(xml.ToString(SaveOptions.DisableFormatting));
         }
 
-        if (partyMembers.Count == 0)
-        {
-            await pRepo.DeleteByColumnAsync("partyid", party.PartyId);
-            return Ok();
-        }
-
         await pRepo.UpdateAsync(party);
 
         var partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta) ?? new();
 
         string assignmentKey;
         if (partyMeta.ContainsKey("Default:RawSquadAssignments_j"))
-            assignmentKey = partyMeta["Default:RawSquadAssignments_j"].ToString();
+            assignmentKey = "Default:RawSquadAssignments_j";
         else
             assignmentKey = "RawSquadAssignments_j";
 
@@ -658,7 +659,7 @@ public class PartyController : ControllerBase
                 if (index != -1)
                 {
                     rawSquadAssignment.RawSquadAssignments.RemoveAt(index);
-                    partyMeta[assignmentKey] = JsonSerializer.Serialize(rawSquadAssignment);
+                    partyMeta[assignmentKey] = JsonConvert.SerializeObject(rawSquadAssignment);
                 }
 
                 var captain = partyMembers.FirstOrDefault(x => x.Role == "CAPTAIN");
@@ -670,6 +671,7 @@ public class PartyController : ControllerBase
 
                 party.UpdatedAt = timestamp;
                 party.Meta = JsonSerializer.Serialize(partyMeta);
+                party.Members = JsonSerializer.Serialize(partyMembers); 
 
                 await pRepo.UpdateAsync(party);
 
@@ -694,9 +696,9 @@ public class PartyController : ControllerBase
                     party_state_overriden = new Dictionary<string, object>(),
                     party_state_removed = new List<string>(),
                     party_state_updated = new Dictionary<string, object>
-                    {
-                        { assignmentKey, JsonConvert.SerializeObject(partyMeta[assignmentKey]) }
-                    },
+                {
+                    { assignmentKey, JsonConvert.SerializeObject(rawSquadAssignment) }
+                },
                     party_sub_type = partySubType,
                     party_type = "DEFAULT",
                     revision = party.Revision,
@@ -704,8 +706,6 @@ public class PartyController : ControllerBase
                     type = "com.epicgames.social.party.notification.v0.PARTY_UPDATED",
                     updated_at = party.UpdatedAt
                 });
-
-                Console.WriteLine(JsonConvert.SerializeObject(updateBody, Formatting.Indented));
 
                 foreach (var member in partyMembers)
                 {
