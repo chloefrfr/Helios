@@ -16,7 +16,6 @@ public class FriendsController : ControllerBase
     private const string StatusAccepted = "ACCEPTED";
     private const string StatusPending = "PENDING";
     private const string DirectionOutbound = "OUTBOUND";
-    private const string DirectionInbound = "INBOUND";
     
     private static readonly Dictionary<string, HashSet<string>> _recentPlayers = new();
     private static readonly Random _random = new();
@@ -128,9 +127,93 @@ public class FriendsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("v1/{accountId}/summary")]
+    public async Task<IActionResult> GetFriendSummary(string accountId)
+    {
+        if (string.IsNullOrWhiteSpace(accountId))
+            return BasicErrors.BadRequest.WithMessage("Invalid account id").Apply(HttpContext);
+    
+        var friendRepo = Constants.repositoryPool.For<Friends>();
+        var friends = await friendRepo.FindAllAsync(new Friends { AccountId = accountId });
+
+        if (!friends.Any())
+            return AccountErrors.AccountNotFound(accountId)
+                .WithMessage($"Friends for user {accountId} not found.")
+                .Apply(HttpContext);
+
+        var response = new
+        {
+            friends = new List<object>(),
+            incoming = new List<object>(),
+            outgoing = new List<object>(),
+            suggested = new List<object>(),
+            blocklist = new List<object>(),
+            settings = new { acceptInvites = "public" }
+        };
+
+        foreach (var friend in friends)
+        {
+            var friendData = new
+            {
+                accountId = friend.AccountId == accountId ? friend.FriendId : friend.AccountId,
+                favorite = false,
+                created = friend.CreatedAt
+            };
+
+            if (friend.Status == "ACCEPTED")
+            {
+                response.friends.Add(new
+                {
+                    accountId = friendData.accountId,
+                    groups = Array.Empty<object>(),
+                    mutual = 0,
+                    alias = friend.Alias ?? "",
+                    note = "",
+                    favorite = false,
+                    created = friend.CreatedAt
+                });
+            }
+            else if (friend.Direction == "OUTBOUND")
+            {
+                response.outgoing.Add(friendData);
+            }
+            else if (friend.Direction == "INBOUND")
+            {
+                response.incoming.Add(friendData);
+            }
+        }
+
+        return Ok(response);
+    }
+
+    [HttpGet("public/friends/{accountId}")]
+    public async Task<IActionResult> GetFriends(string accountId)
+    {
+        if (string.IsNullOrWhiteSpace(accountId))
+            return BasicErrors.BadRequest.WithMessage("Invalid account id").Apply(HttpContext);
+
+        var friendRepo = Constants.repositoryPool.For<Friends>();
+        var friends = await friendRepo.FindAllAsync(new Friends { AccountId = accountId });
+
+        if (!friends.Any())
+            return AccountErrors.AccountNotFound(accountId)
+                .WithMessage($"Friends for user {accountId} not found.")
+                .Apply(HttpContext);
+
+        var response = friends.Select(friend => new
+        {
+            accountId = friend.FriendId,
+            status = friend.Status == "ACCEPTED" ? "ACCEPTED" : "PENDING",
+            direction = FriendsManager.GetDirection(friend),
+            created = friend.CreatedAt,
+            favorite = false
+        }).ToList<object>();
+
+        return Ok(response);
+    }
+    
     [HttpPost("v1/{accountId}/friends/{friendId}")]
     [HttpPost("v1/friends/{accountId}/{friendId}")]
-    [HttpPost("public/friends/{accountId}/{friendId}")]
     public async Task<IActionResult> AddFriend(string accountId, string friendId)
     {
         if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(friendId))

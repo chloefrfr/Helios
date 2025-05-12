@@ -42,4 +42,12 @@ public class FriendsManager
         string json = JsonConvert.SerializeObject(stanza);
         await Constants.GlobalXmppClientService.ForwardStanzaAsync(toAccountId, json);
     }
+    
+    public static string GetDirection(Friends friend)
+    {
+        if (friend.Status == "ACCEPTED")
+            return "OUTBOUND";
+    
+        return friend.Direction == "OUTBOUND" ? "INBOUND" : "OUTBOUND";
+    }
 }
