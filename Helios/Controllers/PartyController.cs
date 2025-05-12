@@ -44,7 +44,7 @@ public class PartyController : ControllerBase
     }
 
     [HttpPost("Fortnite/parties")]
-    public async Task<IActionResult> CreateParty()
+    public async Task<IActionResult> CreateOrUpdateParty()
     {
         string requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
         JObject requestData;
@@ -66,6 +66,13 @@ public class PartyController : ControllerBase
         var joinInfoMeta = joinInfo.SelectToken("meta")?.ToObject<Dictionary<string, object>>();
         var joinInfoConnectionMeta = joinInfo.SelectToken("connection.meta")?.ToObject<Dictionary<string, object>>();
 
+        var existingParties = await pRepo.FindAllByTableAsync();
+        var existingParty = existingParties.FirstOrDefault(p =>
+        {
+            var members = JsonSerializer.Deserialize<List<PartyMember>>(p.Members);
+            return members.Any(m => m.AccountId == accountId);
+        });
+
         var partyMemberConnection = new PartyMemberConnection
         {
             Id = connectionId ?? string.Empty,
@@ -75,59 +82,121 @@ public class PartyController : ControllerBase
             Meta = joinInfoConnectionMeta
         };
 
-        var partyMember = new PartyMember
+        if (existingParty != null)
         {
-            AccountId = accountId,
-            Meta = joinInfoMeta,
-            Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection }),
-            Revision = 0,
-            UpdatedAt = timestamp,
-            JoinedAt = timestamp,
-            Role = "CAPTAIN"
-        };
+            var existingMembers = JsonSerializer.Deserialize<List<PartyMember>>(existingParty.Members);
 
-        string partyId = Guid.NewGuid().ToString().Replace("-", "");
-        var newParty = new Parties
-        {
-            PartyId = partyId,
-            CreatedAt = timestamp,
-            UpdatedAt = timestamp,
-            Config = JsonSerializer.Serialize(requestData["config"].ToObject<Dictionary<string, dynamic>>()),
-            Members = JsonSerializer.Serialize(new List<PartyMember> { partyMember }),
-            Meta = JsonSerializer.Serialize(requestData["meta"].ToObject<Dictionary<string, string>>()),
-            Invites = JsonSerializer.Serialize(new List<PartyInvite>()),
-            Applicants = Array.Empty<string>(),
-            Revision = 0,
-            Intentions = Array.Empty<string>()
-        };
+            var existingMemberIndex = existingMembers.FindIndex(m => m.AccountId == accountId);
 
-        await pRepo.SaveAsync(newParty);
-
-        return Ok(new
-        {
-            id = partyId,
-            created_at = timestamp,
-            updated_at = timestamp,
-            config = requestData["config"].ToObject<Dictionary<string, dynamic>>(),
-            members = new List<object>
+            if (existingMemberIndex != -1)
             {
-                new
+                var existingMember = existingMembers[existingMemberIndex];
+                existingMember.Meta = joinInfoMeta;
+                existingMember.Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection });
+                existingMember.UpdatedAt = timestamp;
+            }
+            else
+            {
+                var newPartyMember = new PartyMember
                 {
-                    account_id = accountId,
-                    meta = joinInfoMeta,
-                    connections = new List<PartyMemberConnection> { partyMemberConnection },
-                    revision = 0,
-                    updated_at = timestamp,
-                    joined_at = timestamp,
-                    role = "CAPTAIN"
-                }
-            },
-            meta = requestData["meta"].ToObject<Dictionary<string, string>>(),
-            invites = Array.Empty<PartyInvite>(),
-            applicants = Array.Empty<string>(),
-            revision = 0,
-            intentions = Array.Empty<string>()
-        });
+                    AccountId = accountId,
+                    Meta = joinInfoMeta,
+                    Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection }),
+                    Revision = existingMembers.Count,
+                    UpdatedAt = timestamp,
+                    JoinedAt = timestamp,
+                    Role = existingMembers.Count == 0 ? "CAPTAIN" : "MEMBER"
+                };
+                existingMembers.Add(newPartyMember);
+            }
+
+            existingParty.UpdatedAt = timestamp;
+            existingParty.Config = JsonSerializer.Serialize(requestData["config"].ToObject<Dictionary<string, dynamic>>());
+            existingParty.Members = JsonSerializer.Serialize(existingMembers);
+            existingParty.Meta = JsonSerializer.Serialize(requestData["meta"].ToObject<Dictionary<string, string>>());
+            existingParty.Revision++;
+
+            await pRepo.UpdateAsync(existingParty);
+
+            return Ok(new
+            {
+                id = existingParty.PartyId,
+                created_at = existingParty.CreatedAt,
+                updated_at = timestamp,
+                config = requestData["config"].ToObject<Dictionary<string, dynamic>>(),
+                members = existingMembers.Select(m => new
+                {
+                    account_id = m.AccountId,
+                    meta = JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(m.Meta)),
+                    connections = JsonSerializer.Deserialize<List<PartyMemberConnection>>(m.Connections),
+                    revision = m.Revision,
+                    updated_at = m.UpdatedAt,
+                    joined_at = m.JoinedAt,
+                    role = m.Role
+                }).ToList(),
+                meta = requestData["meta"].ToObject<Dictionary<string, string>>(),
+                invites = JsonSerializer.Deserialize<List<PartyInvite>>(existingParty.Invites) ?? new List<PartyInvite>(),
+                applicants = existingParty.Applicants,
+                revision = existingParty.Revision,
+                intentions = existingParty.Intentions
+            });
+        }
+        else
+        {
+            var partyMember = new PartyMember
+            {
+                AccountId = accountId,
+                Meta = joinInfoMeta,
+                Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection }),
+                Revision = 0,
+                UpdatedAt = timestamp,
+                JoinedAt = timestamp,
+                Role = "CAPTAIN"
+            };
+
+            string partyId = Guid.NewGuid().ToString().Replace("-", "");
+            var newParty = new Parties
+            {
+                PartyId = partyId,
+                CreatedAt = timestamp,
+                UpdatedAt = timestamp,
+                Config = JsonSerializer.Serialize(requestData["config"].ToObject<Dictionary<string, dynamic>>()),
+                Members = JsonSerializer.Serialize(new List<PartyMember> { partyMember }),
+                Meta = JsonSerializer.Serialize(requestData["meta"].ToObject<Dictionary<string, string>>()),
+                Invites = JsonSerializer.Serialize(new List<PartyInvite>()),
+                Applicants = Array.Empty<string>(),
+                Revision = 0,
+                Intentions = Array.Empty<string>()
+            };
+
+            await pRepo.SaveAsync(newParty);
+
+            return Ok(new
+            {
+                id = partyId,
+                created_at = timestamp,
+                updated_at = timestamp,
+                config = requestData["config"].ToObject<Dictionary<string, dynamic>>(),
+                members = new List<object>
+                {
+                    new
+                    {
+                        account_id = accountId,
+                        meta = joinInfoMeta,
+                        connections = new List<PartyMemberConnection> { partyMemberConnection },
+                        revision = 0,
+                        updated_at = timestamp,
+                        joined_at = timestamp,
+                        role = "CAPTAIN"
+                    }
+                },
+                meta = requestData["meta"].ToObject<Dictionary<string, string>>(),
+                invites = Array.Empty<PartyInvite>(),
+                applicants = Array.Empty<string>(),
+                revision = 0,
+                intentions = Array.Empty<string>()
+            });
+        }
     }
 
     [HttpGet("Fortnite/parties/{partyId}")]
@@ -172,32 +241,35 @@ public class PartyController : ControllerBase
     [HttpPatch("Fortnite/parties/{partyId}")]
     public async Task<IActionResult> ModifyFortniteParty(string partyId)
     {
-        if (!await VerifyToken.Verify(HttpContext))
-            return AuthenticationErrors.InvalidToken("Failed to verify token.").Apply(HttpContext);
-
         var party = await pRepo.FindByColumnAsync("partyid", partyId);
         if (party == null)
             return PartyErrors.PartyNotFound.Apply(HttpContext);
 
-        string requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
         JObject requestData;
-
         try
         {
-            requestData = JObject.Parse(requestBody);
+            requestData = JObject.Parse(await new StreamReader(Request.Body).ReadToEndAsync());
         }
         catch
         {
             return MCPErrors.InvalidPayload.Apply(HttpContext);
         }
-
-        var meta = requestData["meta"];
-        var metaDelete = meta?["delete"]?.Values<string>().ToList();
-        var metaUpdate = meta?["update"]?.ToObject<Dictionary<string, string>>();
+        
+        var partyConfig = JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(party.Config) ?? new();
+        var config = requestData["config"]?.ToObject<Dictionary<string, object>>();
+        if (config != null)
+        {
+            foreach (var (key, value) in config)
+            {
+                partyConfig[key] = JsonSerializer.SerializeToElement(value);
+            }
+        }
 
         var partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta) ?? new();
+        var meta = requestData["meta"];
 
-        if (metaDelete != null && metaDelete.Count > 0)
+        var metaDelete = meta?["delete"]?.Values<string>().ToList();
+        if (metaDelete?.Any() == true)
         {
             foreach (var key in metaDelete)
             {
@@ -205,15 +277,24 @@ public class PartyController : ControllerBase
             }
         }
 
-        if (metaUpdate != null && metaUpdate.Count > 0)
+        var metaUpdate = meta?["update"]?.ToObject<Dictionary<string, string>>();
+        if (metaUpdate?.Any() == true)
         {
             foreach (var (key, value) in metaUpdate)
             {
-                partyMeta[key] = value;
+                if (key.EndsWith("Time_s") && DateTime.TryParse(value, out DateTime parsedTime))
+                {
+                    partyMeta[key] = parsedTime.ToIsoUtcString();
+                }
+                else
+                {
+                    partyMeta[key] = value;
+                }
             }
         }
 
         party.Meta = JsonSerializer.Serialize(partyMeta);
+        party.Config = JsonSerializer.Serialize(partyConfig);
         party.Revision++;
         party.UpdatedAt = DateTime.UtcNow.ToIsoUtcString();
 
@@ -225,42 +306,18 @@ public class PartyController : ControllerBase
 
         var sessionsRepo = Constants.repositoryPool.For<ClientSessions>();
         var clients = await sessionsRepo.FindAllByColumnAsync("accountid", accountIds);
-        var clientMap = clients
-            .GroupBy(c => c.AccountId)
-            .ToDictionary(g => g.Key, g => g.First());
-
-        var partyConfig = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(party.Config) ?? new();
-
-        object GetSafeValue(string key)
-        {
-            if (partyConfig.TryGetValue(key, out var element))
-            {
-                return element.ValueKind switch
-                {
-                    JsonValueKind.String => element.GetString(),
-                    JsonValueKind.Number => element.GetInt32(),
-                    JsonValueKind.True => true,
-                    JsonValueKind.False => false,
-                    JsonValueKind.Null => null,
-                    JsonValueKind.Object => JsonSerializer.Deserialize<object>(element.GetRawText()),
-                    JsonValueKind.Array => JsonSerializer.Deserialize<object[]>(element.GetRawText()),
-                    _ => null
-                };
-            }
-            return null;
-        }
+        var clientMap = clients.ToDictionary(c => c.AccountId, c => c);
 
         var messageTemplate = new
         {
             captain_id = captain?.AccountId,
             party_state_updated = metaUpdate,
             party_state_removed = metaDelete,
-            party_state_overriden = metaUpdate,
-            party_privacy_type = GetSafeValue("joinability"),
-            party_type = GetSafeValue("type") ?? "DEFAULT",
-            party_sub_type = partyMeta["urn:epic:cfg:party-type-id_s"]?.ToString(),
-            max_number_of_members = GetSafeValue("max_size"),
-            invite_ttl_seconds = GetSafeValue("invite_ttl") ?? 14400,
+            party_privacy_type = partyConfig.TryGetValue("joinability", out var j) ? j.GetString() : null,
+            party_type = partyConfig.TryGetValue("type", out var t) ? t.GetString() : "DEFAULT",
+            party_sub_type = partyMeta.TryGetValue("urn:epic:cfg:party-type-id_s", out var st) ? st?.ToString() : null,
+            max_number_of_members = partyConfig.TryGetValue("max_size", out var ms) ? ms.GetInt32() : 0,
+            invite_ttl_seconds = partyConfig.TryGetValue("invite_ttl", out var ttl) ? ttl.GetInt32() : 14400,
             updated_at = party.UpdatedAt,
             created_at = party.CreatedAt,
             ns = "Fortnite",
@@ -278,7 +335,7 @@ public class PartyController : ControllerBase
             var xmlMessage = new XElement(XNamespace.Get("jabber:client") + "message",
                 new XAttribute("to", client.Jid),
                 new XAttribute("from", "xmpp-admin@prod.ol.epicgames.com"),
-                new XElement("body", JsonSerializer.Serialize(messageTemplate))
+                new XElement("body", JsonConvert.SerializeObject(messageTemplate))
             );
 
             socket.Send(xmlMessage.ToString(SaveOptions.DisableFormatting));
@@ -428,7 +485,7 @@ public class PartyController : ControllerBase
 
         var partyMemberConnection = new PartyMemberConnection
         {
-            Id = memberId,
+            Id = connectionId,
             ConnectedAt = timestamp,
             UpdatedAt = timestamp,
             YieldLeadership = false,
@@ -436,6 +493,7 @@ public class PartyController : ControllerBase
         };
 
         var deserializedPartyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members ?? "[]") ?? new();
+        deserializedPartyMembers = deserializedPartyMembers.Where(member => member.AccountId != accountId).ToList();
 
         deserializedPartyMembers.Add(new PartyMember
         {
@@ -448,26 +506,42 @@ public class PartyController : ControllerBase
             Role = "MEMBER"
         });
 
-        var partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta ?? "{}") ?? new();
+        var partyMeta = party.Meta != null
+            ? JsonConvert.DeserializeObject<Dictionary<string, object>>(party.Meta)
+            : new Dictionary<string, object>();
+
         string squadAssignmentsKey = partyMeta.ContainsKey("Default:RawSquadAssignments_j")
             ? "Default:RawSquadAssignments_j"
             : "RawSquadAssignments_j";
 
-        string rawJson = partyMeta.TryGetValue(squadAssignmentsKey, out var raw) ? raw?.ToString() : "{\"RawSquadAssignments\":[]}";
-        var squadAssignments = JsonConvert.DeserializeObject<SquadAssignmentsWrapper>(rawJson) ?? new SquadAssignmentsWrapper();
+        string rawJson = partyMeta.TryGetValue(squadAssignmentsKey, out var rawObj) && rawObj != null
+            ? rawObj.ToString()
+            : "{\"RawSquadAssignments\":[]}";
 
-        if (!squadAssignments.RawSquadAssignments.Any(sa => sa.MemberId == memberId))
+        var squadAssignments = JsonConvert.DeserializeObject<SquadAssignmentsWrapper>(rawJson)
+                               ?? new SquadAssignmentsWrapper();
+
+        if (!squadAssignments.RawSquadAssignments.Any(sa => sa.memberId == memberId))
         {
             squadAssignments.RawSquadAssignments.Add(new SquadAssignment
             {
-                MemberId = memberId,
-                AbsoluteMemberIdx = deserializedPartyMembers.Count - 1
+                memberId = memberId,
+                absoluteMemberIdx = deserializedPartyMembers.Count - 1
             });
         }
 
-        partyMeta[squadAssignmentsKey] = JsonConvert.SerializeObject(squadAssignments);
+        var partyMember = deserializedPartyMembers.FirstOrDefault(m => m.AccountId == accountId);
+        if (partyMember == null)
+            return PartyErrors.MemberNotFound.WithMessage($"Member {accountId} not found in party {partyId}.").Apply(HttpContext);
+
+        partyMember.Revision++;
+
+        partyMeta[squadAssignmentsKey] = JsonSerializer.Serialize(squadAssignments);
+        party.Meta = JsonSerializer.Serialize(partyMeta);
+
         party.Members = JsonSerializer.Serialize(deserializedPartyMembers);
         party.Meta = JsonSerializer.Serialize(partyMeta);
+
         party.Revision++;
         party.UpdatedAt = timestamp;
 
@@ -528,9 +602,6 @@ public class PartyController : ControllerBase
 
         string jsonMemberJoined = JsonConvert.SerializeObject(memberJoinedMessage, Formatting.Indented);
         string jsonPartyUpdated = JsonConvert.SerializeObject(partyUpdatedMessage, Formatting.Indented);
-        
-        Console.WriteLine(jsonMemberJoined);
-        Console.WriteLine(jsonPartyUpdated);
 
         var sessionsRepo = Constants.repositoryPool.For<ClientSessions>();
         var accountIds = deserializedPartyMembers.Select(m => m.AccountId).ToList();
@@ -644,7 +715,7 @@ public class PartyController : ControllerBase
             if (!string.IsNullOrEmpty(jsonString))
             {
                 var rawSquadAssignment = JsonConvert.DeserializeObject<SquadAssignmentsWrapper>(jsonString);
-                var index = rawSquadAssignment.RawSquadAssignments.FindIndex(x => x.MemberId == accountId);
+                var index = rawSquadAssignment.RawSquadAssignments.FindIndex(x => x.memberId == accountId);
 
                 if (index != -1)
                 {
