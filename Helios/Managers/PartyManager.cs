@@ -6,6 +6,7 @@ using Helios.Database.Tables.Fortnite;
 using Helios.Database.Tables.XMPP;
 using Helios.Utilities;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using JsonException = System.Text.Json.JsonException;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 
@@ -172,6 +173,44 @@ public class PartyManager : IDisposable
             new XElement("body", body)
         );
         return xml.ToString(SaveOptions.DisableFormatting);
+    }
+    
+    private static object ExtractJTokenValue(JToken token)
+    {
+        switch (token.Type)
+        {
+            case JTokenType.String:
+                return token.Value<string>();
+            case JTokenType.Integer:
+                return token.Value<long>();
+            case JTokenType.Float:
+                return token.Value<double>();
+            case JTokenType.Boolean:
+                return token.Value<bool>();
+            case JTokenType.Object:
+                return ConvertJTokenToObject(token);
+            case JTokenType.Array:
+                return token.Select(ExtractJTokenValue).ToList();
+            case JTokenType.Null:
+                return null;
+            default:
+                return token.ToString();
+        }
+    }
+
+    public static Dictionary<string, object> ConvertJTokenToObject(JToken token)
+    {
+        var result = new Dictionary<string, object>();
+    
+        if (token is JObject jObject)
+        {
+            foreach (var property in jObject.Properties())
+            {
+                result[property.Name] = ExtractJTokenValue(property.Value);
+            }
+        }
+    
+        return result;
     }
 
     public void Dispose()
