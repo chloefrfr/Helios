@@ -30,7 +30,8 @@ public static class GetUserPresence
         var xml = new XElement(XNamespace.Get("jabber:client") + "presence",
             new XAttribute("from", fromJid),
             new XAttribute("to", toJid),
-            new XAttribute("type", presenceType)
+            new XAttribute("type", presenceType),
+            new XAttribute("xmlns", XNamespace.Get("jabber:client"))
         );
 
         if (presence.IsAway)

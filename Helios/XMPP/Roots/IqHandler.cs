@@ -86,7 +86,7 @@ public class IqHandler
                         : new LastPresenceUpdate();
 
                     try {
-                        var presenceXml = new XElement("presence",
+                        var presenceXml = new XElement(XNamespace.Get("jabber:client") + "presence",
                             new XAttribute("to", client.Jid),
                             new XAttribute("xmlns", "jabber:client"),
                             new XAttribute("from", cl.Jid),
