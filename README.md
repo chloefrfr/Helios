@@ -20,6 +20,10 @@ Fortnite Backend written in C# that aims to be as performant as possible.
 
 - Party System V2
 
+# Bugs
+
+None as of right now. If you find any, please create a new issue [here](https://github.com/chloefrfr/Helios/issues).
+
 # Getting Started
 
 Please read [Getting Started](./Docs/SETUP.md) on how to setup the project. <br />
