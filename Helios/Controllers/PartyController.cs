@@ -409,7 +409,7 @@ public class PartyController : ControllerBase
         {
             requestData = JObject.Parse(requestBody);
         }
-        catch 
+        catch
         {
             return MCPErrors.InvalidPayload.Apply(HttpContext);
         }
@@ -425,39 +425,28 @@ public class PartyController : ControllerBase
 
         var memberMeta = requestData["meta"]?.ToObject<Dictionary<string, object>>() ?? new();
         var memberConnectionMeta = connectionInfo["meta"]?.ToObject<Dictionary<string, object>>() ?? new();
-        bool yieldLeadership = connectionInfo["yield_leadership"]?.Value<bool>() ?? false;
 
         var partyMemberConnection = new PartyMemberConnection
         {
             Id = memberId,
             ConnectedAt = timestamp,
             UpdatedAt = timestamp,
-            YieldLeadership = yieldLeadership,
+            YieldLeadership = false,
             Meta = memberConnectionMeta
         };
 
         var deserializedPartyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members ?? "[]") ?? new();
-        var existingMember = deserializedPartyMembers.FirstOrDefault(m => m.AccountId == memberId);
 
-        if (existingMember != null)
+        deserializedPartyMembers.Add(new PartyMember
         {
-            existingMember.Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection });
-            existingMember.Meta = memberMeta;
-            existingMember.UpdatedAt = timestamp;
-        }
-        else
-        {
-            deserializedPartyMembers.Add(new PartyMember
-            {
-                AccountId = memberId,
-                Meta = memberMeta,
-                Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection }),
-                Revision = 0,
-                UpdatedAt = timestamp,
-                JoinedAt = timestamp,
-                Role = yieldLeadership ? "CAPTAIN" : "MEMBER"
-            });
-        }
+            AccountId = memberId,
+            Meta = memberMeta,
+            Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection }),
+            Revision = 0,
+            UpdatedAt = timestamp,
+            JoinedAt = timestamp,
+            Role = "MEMBER"
+        });
 
         var partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta ?? "{}") ?? new();
         string squadAssignmentsKey = partyMeta.ContainsKey("Default:RawSquadAssignments_j")
@@ -537,8 +526,11 @@ public class PartyController : ControllerBase
             updated_at = timestamp,
         };
 
-        string jsonMemberJoined = JsonConvert.SerializeObject(memberJoinedMessage);
-        string jsonPartyUpdated = JsonConvert.SerializeObject(partyUpdatedMessage);
+        string jsonMemberJoined = JsonConvert.SerializeObject(memberJoinedMessage, Formatting.Indented);
+        string jsonPartyUpdated = JsonConvert.SerializeObject(partyUpdatedMessage, Formatting.Indented);
+        
+        Console.WriteLine(jsonMemberJoined);
+        Console.WriteLine(jsonPartyUpdated);
 
         var sessionsRepo = Constants.repositoryPool.For<ClientSessions>();
         var accountIds = deserializedPartyMembers.Select(m => m.AccountId).ToList();
