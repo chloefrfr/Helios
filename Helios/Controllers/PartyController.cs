@@ -191,28 +191,18 @@ public class PartyController : ControllerBase
             return MCPErrors.InvalidPayload.Apply(HttpContext);
         }
 
-        var configUpdates = requestData["config"]?.ToObject<Dictionary<string, object>>();
         var meta = requestData["meta"];
         var metaDelete = meta?["delete"]?.Values<string>().ToList();
         var metaUpdate = meta?["update"]?.ToObject<Dictionary<string, string>>();
 
-        if (configUpdates != null && configUpdates.Count > 0)
-        {
-            var existingConfig = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Config) ?? new();
-
-            foreach (var (key, value) in configUpdates)
-                existingConfig[key] = value;
-
-            party.Config = JsonSerializer.Serialize(existingConfig);
-        }
-
         var partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta) ?? new();
-        bool metaModified = false;
 
         if (metaDelete != null && metaDelete.Count > 0)
         {
             foreach (var key in metaDelete)
-                metaModified |= partyMeta.Remove(key);
+            {
+                partyMeta.Remove(key);
+            }
         }
 
         if (metaUpdate != null && metaUpdate.Count > 0)
@@ -220,15 +210,13 @@ public class PartyController : ControllerBase
             foreach (var (key, value) in metaUpdate)
             {
                 partyMeta[key] = value;
-                metaModified = true;
             }
         }
 
-        if (metaModified)
-            party.Meta = JsonSerializer.Serialize(partyMeta);
-
+        party.Meta = JsonSerializer.Serialize(partyMeta);
         party.Revision++;
         party.UpdatedAt = DateTime.UtcNow.ToIsoUtcString();
+
         await pRepo.UpdateAsync(party);
 
         var members = JsonSerializer.Deserialize<List<PartyMember>>(party.Members) ?? new();
@@ -320,7 +308,7 @@ public class PartyController : ControllerBase
         var metaDelete = requestData["delete"]?.ToObject<List<string>>() ?? new List<string>();
         var metaUpdate = requestData["update"]?.ToObject<Dictionary<string, object>>();
 
-        var partyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members);
+        var partyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members) ?? new List<PartyMember>();
         var member = partyMembers.FirstOrDefault(m => m.AccountId == accountId);
         if (member == null)
             return PartyErrors.MemberNotFound.WithMessage($"Member {accountId} not found in party {partyId}.").Apply(HttpContext);
@@ -328,31 +316,27 @@ public class PartyController : ControllerBase
         var currentTime = DateTime.UtcNow;
         string isoTime = currentTime.ToIsoUtcString();
 
-        member.UpdatedAt = isoTime;
+        member.Meta ??= new Dictionary<string, object>();
 
-        Dictionary<string, object> partyMeta = null;
-        if ((metaDelete?.Count > 0) || (metaUpdate?.Count > 0))
+        foreach (var key in metaDelete)
         {
-            partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta) ?? new();
+            member.Meta.Remove(key);
+        }
 
-            foreach (var key in metaDelete)
+        if (metaUpdate != null)
+        {
+            foreach (var (key, value) in metaUpdate)
             {
-                partyMeta.Remove(key);
-            }
-
-            if (metaUpdate != null)
-            {
-                foreach (var (key, value) in metaUpdate)
-                {
-                    partyMeta[key] = value;
-                }
-
-                party.Meta = JsonSerializer.Serialize(partyMeta);
+                member.Meta[key] = value;
             }
         }
 
+        member.UpdatedAt = isoTime;
+        member.Revision++;
+
         party.Members = JsonSerializer.Serialize(partyMembers);
         party.UpdatedAt = isoTime;
+        party.Revision++;
         await pRepo.UpdateAsync(party);
 
         var memberDn = member.Meta.TryGetValue("urn:epic:member:dn_s", out var dn) ? dn?.ToString() : null;
@@ -414,25 +398,34 @@ public class PartyController : ControllerBase
             return PartyErrors.PartyNotFound.WithMessage($"Party {partyId} does not exist.").Apply(HttpContext);
         }
 
-        string requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
+        string requestBody;
+        using (var reader = new StreamReader(Request.Body))
+        {
+            requestBody = await reader.ReadToEndAsync();
+        }
+
         JObject requestData;
         try
         {
             requestData = JObject.Parse(requestBody);
         }
-        catch
+        catch 
         {
             return MCPErrors.InvalidPayload.Apply(HttpContext);
         }
 
         string timestamp = DateTime.UtcNow.ToIsoUtcString();
-        var connectionInfo = requestData["connection"] ?? throw new InvalidOperationException("Missing connection.");
-        var memberId = connectionInfo.SelectToken("id")?.ToString().Split("@prod")[0] ?? string.Empty;
-        var connectionId = connectionInfo.SelectToken("id")?.ToString();
-        var memberMeta = requestData.SelectToken("meta")?.ToObject<Dictionary<string, object>>();
-        var memberConnectionMeta = connectionInfo.SelectToken("meta")?.ToObject<Dictionary<string, object>>();
-        var yieldLeadership = connectionInfo.SelectToken("yield_leadership")?.Value<bool>() ?? false;
 
+        var connectionInfo = requestData["connection"];
+        if (connectionInfo == null)
+            return MCPErrors.InvalidPayload.WithMessage("Missing connection object.").Apply(HttpContext);
+
+        string connectionId = connectionInfo["id"]?.ToString();
+        string memberId = connectionId?.Split("@prod")[0] ?? accountId;
+
+        var memberMeta = requestData["meta"]?.ToObject<Dictionary<string, object>>() ?? new();
+        var memberConnectionMeta = connectionInfo["meta"]?.ToObject<Dictionary<string, object>>() ?? new();
+        bool yieldLeadership = connectionInfo["yield_leadership"]?.Value<bool>() ?? false;
 
         var partyMemberConnection = new PartyMemberConnection
         {
@@ -443,53 +436,67 @@ public class PartyController : ControllerBase
             Meta = memberConnectionMeta
         };
 
-        var deserializedPartyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members);
-        // deserializedPartyMembers = deserializedPartyMembers
-        //     .Where(member => member.AccountId != accountId)
-        //     .ToList();
+        var deserializedPartyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members ?? "[]") ?? new();
+        var existingMember = deserializedPartyMembers.FirstOrDefault(m => m.AccountId == memberId);
 
-        deserializedPartyMembers.Add(new PartyMember
+        if (existingMember != null)
         {
-            AccountId = memberId,
-            Meta = memberMeta,
-            Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection }),
-            Revision = 0,
-            UpdatedAt = timestamp,
-            JoinedAt = timestamp,
-            Role = yieldLeadership ? "CAPTAIN" : "MEMBER"
-        });
+            existingMember.Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection });
+            existingMember.Meta = memberMeta;
+            existingMember.UpdatedAt = timestamp;
+        }
+        else
+        {
+            deserializedPartyMembers.Add(new PartyMember
+            {
+                AccountId = memberId,
+                Meta = memberMeta,
+                Connections = JsonSerializer.Serialize(new List<PartyMemberConnection> { partyMemberConnection }),
+                Revision = 0,
+                UpdatedAt = timestamp,
+                JoinedAt = timestamp,
+                Role = yieldLeadership ? "CAPTAIN" : "MEMBER"
+            });
+        }
 
-        var partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta) ?? new();
+        var partyMeta = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Meta ?? "{}") ?? new();
         string squadAssignmentsKey = partyMeta.ContainsKey("Default:RawSquadAssignments_j")
             ? "Default:RawSquadAssignments_j"
             : "RawSquadAssignments_j";
 
-        string rawJson = partyMeta.ContainsKey(squadAssignmentsKey)
-            ? partyMeta[squadAssignmentsKey]?.ToString()
-            : "{\"RawSquadAssignments\":[]}";
+        string rawJson = partyMeta.TryGetValue(squadAssignmentsKey, out var raw) ? raw?.ToString() : "{\"RawSquadAssignments\":[]}";
+        var squadAssignments = JsonConvert.DeserializeObject<SquadAssignmentsWrapper>(rawJson) ?? new SquadAssignmentsWrapper();
 
-        var squadAssignments = JsonConvert.DeserializeObject<SquadAssignmentsWrapper>(rawJson);
-        squadAssignments.RawSquadAssignments.Add(new SquadAssignment
+        if (!squadAssignments.RawSquadAssignments.Any(sa => sa.MemberId == memberId))
         {
-            MemberId = memberId,
-            AbsoluteMemberIdx = deserializedPartyMembers.Count - 1
-        });
+            squadAssignments.RawSquadAssignments.Add(new SquadAssignment
+            {
+                MemberId = memberId,
+                AbsoluteMemberIdx = deserializedPartyMembers.Count - 1
+            });
+        }
 
         partyMeta[squadAssignmentsKey] = JsonConvert.SerializeObject(squadAssignments);
-        party.Revision++;
-        party.UpdatedAt = timestamp;
         party.Members = JsonSerializer.Serialize(deserializedPartyMembers);
         party.Meta = JsonSerializer.Serialize(partyMeta);
+        party.Revision++;
+        party.UpdatedAt = timestamp;
 
         await pRepo.UpdateAsync(party);
 
         var partyCaptain = deserializedPartyMembers.FirstOrDefault(x => x.Role == "CAPTAIN");
-        var partyConfig = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Config) ?? new();
+        var partyConfig = JsonSerializer.Deserialize<Dictionary<string, object>>(party.Config ?? "{}") ?? new();
+        string privacyType = partyConfig.TryGetValue("joinability", out var joinabilityObj)
+            ? joinabilityObj?.ToString() ?? "PUBLIC"
+            : "PUBLIC";
+
+        partyMeta.TryGetValue("urn:epic:cfg:party-type-id_s", out var subTypeObj);
+        string partySubType = subTypeObj?.ToString();
 
         var memberJoinedMessage = new
         {
             account_id = memberId,
-            account_dn = memberMeta["urn:epic:member:dn_s"],
+            account_dn = memberMeta.GetValueOrDefault("urn:epic:member:dn_s", ""),
             connection = new
             {
                 connected_at = timestamp,
@@ -507,14 +514,6 @@ public class PartyController : ControllerBase
             updated_at = timestamp,
         };
 
-        string privacyType = "PUBLIC";
-        if (partyConfig.ContainsKey("joinability"))
-            privacyType = partyConfig["joinability"].ToString();
-
-        string partySubType = null;
-        if (partyMeta.ContainsKey("urn:epic:cfg:party-type-id_s"))
-            partySubType = partyMeta["urn:epic:cfg:party-type-id_s"].ToString();
-
         var partyUpdatedMessage = new
         {
             captain_id = partyCaptain?.AccountId,
@@ -528,9 +527,7 @@ public class PartyController : ControllerBase
             party_state_removed = Array.Empty<string>(),
             party_state_updated = new Dictionary<string, object>
             {
-                {
-                    squadAssignmentsKey, JsonConvert.SerializeObject(squadAssignments)
-                }
+                { squadAssignmentsKey, JsonConvert.SerializeObject(squadAssignments) }
             },
             party_sub_type = partySubType,
             party_type = "DEFAULT",
@@ -546,9 +543,10 @@ public class PartyController : ControllerBase
         var sessionsRepo = Constants.repositoryPool.For<ClientSessions>();
         var accountIds = deserializedPartyMembers.Select(m => m.AccountId).ToList();
         var clients = await sessionsRepo.FindAllByColumnAsync("accountid", accountIds);
+
         var clientMap = clients.GroupBy(c => c.AccountId)
-            .ToDictionary(g => g.Key, g => g.First());
-        
+            .ToDictionary(g => g.Key, g => g.FirstOrDefault());
+
         foreach (var member in deserializedPartyMembers)
         {
             if (!clientMap.TryGetValue(member.AccountId, out var client) ||
@@ -671,7 +669,7 @@ public class PartyController : ControllerBase
 
                 party.UpdatedAt = timestamp;
                 party.Meta = JsonSerializer.Serialize(partyMeta);
-                party.Members = JsonSerializer.Serialize(partyMembers); 
+                party.Members = JsonSerializer.Serialize(partyMembers);
 
                 await pRepo.UpdateAsync(party);
 
