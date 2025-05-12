@@ -171,15 +171,15 @@ public class FriendsController : ControllerBase
                         friendRepo.UpdateAsync(reverseFriendEntry)
                     );
 
-                    var outboundStanza = FriendsManager.CreateStanzaPayload(friend.AccountId, "ACCEPTED", "OUTBOUND", timestamp);
-                    var inboundStanza = FriendsManager.CreateStanzaPayload(user.AccountId, "ACCEPTED", "OUTBOUND", timestamp);
+                    var outboundStanza = FriendsManager.CreateStanzaPayload(friendId, "ACCEPTED", "OUTBOUND", timestamp);
+                    var inboundStanza = FriendsManager.CreateStanzaPayload(accountId, "ACCEPTED", "OUTBOUND", timestamp);
 
                     await Task.WhenAll(
-                        FriendsManager.SendStanzaAsync(user.AccountId, outboundStanza),
-                        FriendsManager.SendStanzaAsync(friend.AccountId, inboundStanza),
+                        FriendsManager.SendStanzaAsync(accountId, outboundStanza),
+                        FriendsManager.SendStanzaAsync(friendId, inboundStanza),
 
-                        Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(user.AccountId, friend.AccountId, false),
-                        Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(friend.AccountId, user.AccountId, false)
+                        Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(accountId, friendId, false),
+                        Constants.GlobalXmppClientService.ForwardPresenceStanzaAsync(friendId, accountId, false)
                     );
 
                     return NoContent();
@@ -187,16 +187,16 @@ public class FriendsController : ControllerBase
             }
             
             await Task.WhenAll(
-                FriendsManager.CreateFriendshipAsync(user.AccountId, friend.AccountId),
-                FriendsManager.CreateFriendshipAsync(friend.AccountId, user.AccountId)
+                FriendsManager.CreateFriendshipAsync(accountId, friendId),
+                FriendsManager.CreateFriendshipAsync(friendId, accountId)
             );
 
-            var outboundPendingStanza = FriendsManager.CreateStanzaPayload(friend.AccountId, "PENDING", "OUTBOUND", timestamp);
-            var inboundPendingStanza = FriendsManager.CreateStanzaPayload(user.AccountId, "PENDING", "INBOUND", timestamp);
+            var outboundPendingStanza = FriendsManager.CreateStanzaPayload(friendId, "PENDING", "OUTBOUND", timestamp);
+            var inboundPendingStanza = FriendsManager.CreateStanzaPayload(accountId, "PENDING", "INBOUND", timestamp);
 
             await Task.WhenAll(
-                FriendsManager.SendStanzaAsync(user.AccountId, outboundPendingStanza),
-                FriendsManager.SendStanzaAsync(friend.AccountId, inboundPendingStanza)
+                FriendsManager.SendStanzaAsync(accountId, outboundPendingStanza),
+                FriendsManager.SendStanzaAsync(friendId, inboundPendingStanza)
             );
 
             return NoContent();

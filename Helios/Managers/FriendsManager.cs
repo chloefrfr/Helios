@@ -37,9 +37,9 @@ public class FriendsManager
         };
     }
 
-    public static Task SendStanzaAsync(string toAccountId, object stanza)
+    public static async Task SendStanzaAsync(string toAccountId, object stanza)
     {
         string json = JsonConvert.SerializeObject(stanza);
-        return Constants.GlobalXmppClientService.ForwardStanzaAsync(json, toAccountId);
+        await Constants.GlobalXmppClientService.ForwardStanzaAsync(toAccountId, json);
     }
 }

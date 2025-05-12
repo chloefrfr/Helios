@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Xml.Linq;
 using Helios.Configuration;
 using Helios.Database.Repository;
 using Helios.Database.Tables.Fortnite;
@@ -160,6 +161,17 @@ public class PartyManager : IDisposable
         {
             Logger.Error($"Error resetting cleanup timer: {ex.Message}");
         }
+    }
+    
+    public static string CreateXmlMessage(string jid, string body)
+    {
+        var xml = new XElement(XNamespace.Get("jabber:client") + "message",
+            new XAttribute("xmlns", "jabber:client"),
+            new XAttribute("to", jid),
+            new XAttribute("from", "xmpp-admin@prod.ol.epicgames.com"),
+            new XElement("body", body)
+        );
+        return xml.ToString(SaveOptions.DisableFormatting);
     }
 
     public void Dispose()

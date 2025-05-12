@@ -45,9 +45,9 @@ public class XmppClient
 
     public async Task ForwardStanzaAsync(string accountId, string body)
     {
-        var sessionRepo = Constants.repositoryPool.Repo<ClientSessions>();
+        var sessionRepo = Constants.repositoryPool.For<ClientSessions>();
 
-        var clientSession = await sessionRepo().FindAsync(new ClientSessions { AccountId = accountId });
+        var clientSession = await sessionRepo.FindByColumnAsync("accountid", accountId);
 
         if (clientSession is null)
             return;
@@ -66,34 +66,35 @@ public class XmppClient
 
     public async Task ForwardPresenceStanzaAsync(string senderId, string receiverId, bool isOffline)
     {
-        var sessionRepo = Constants.repositoryPool.Repo<ClientSessions>();
+        var sessionRepo = Constants.repositoryPool.For<ClientSessions>();
 
-        var senderTask = sessionRepo().FindAsync(new ClientSessions { AccountId = senderId });
-        var receiverTask = sessionRepo().FindAsync(new ClientSessions { AccountId = receiverId });
+        var senderTask = sessionRepo.FindByColumnAsync("accountid", senderId);
+        var receiverTask = sessionRepo.FindByColumnAsync("accountid", receiverId);
 
         await Task.WhenAll(senderTask, receiverTask);
 
         var sender = senderTask.Result;
         var receiver = receiverTask.Result;
 
-        if (sender?.Jid is not string fromJid || receiver?.Jid is not string toJid)
+        if (sender is null || receiver is null)
             return;
 
+        Logger.Debug($"Sender SocketId: {sender.SocketId}");
+        Logger.Debug($"Receiver SocketId: {receiver.SocketId}");
+        
         var lastPresence = JsonSerializer.Deserialize<LastPresenceUpdate>(sender.LastPresenceUpdate) ?? new LastPresenceUpdate();
 
-        var presenceStanza = new XElement("presence",
-            new XAttribute("from", fromJid),
-            new XAttribute("to", toJid),
+        var presenceStanza = new XElement(XNamespace.Get("jabber:client") + "presence",
+            new XAttribute("from", sender.Jid),
+            new XAttribute("xmlns", "jabber:client"),
+            new XAttribute("to", receiver.Jid),
             new XAttribute("type", isOffline ? "unavailable" : "available")
         );
+        
+        if (lastPresence.IsAway)
+            presenceStanza.Add(new XElement("show", "away"));
 
-        if (!string.IsNullOrEmpty(lastPresence.StatusString))
-        {
-            if (lastPresence.IsAway)
-                presenceStanza.Add(new XElement("show", "away"));
-
-            presenceStanza.Add(new XElement("status", lastPresence.StatusString));
-        }
+        presenceStanza.Add(new XElement("status", lastPresence.StatusString));
 
         await _server.SendToClient(receiver.SocketId, presenceStanza.ToString(SaveOptions.DisableFormatting));
     }

@@ -90,13 +90,11 @@ public class AccountController : ControllerBase
     }
     
     [HttpGet("displayName/{username}")]
+    [HttpGet("account/displayName/{username}")]
     public async Task<IActionResult> FindByDisplayName([FromRoute] string username)
     {
         var userRepository = Constants.repositoryPool.For<User>();
-        User user = await userRepository.FindAsync(new User
-        {
-            Username = username
-        });
+        var user = await userRepository.FindByColumnAsync("username", username);
         
         if (user == null)
         {
