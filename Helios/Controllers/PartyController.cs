@@ -26,6 +26,7 @@ public class PartyController : ControllerBase
     public Repository<Parties> pRepo = Constants.repositoryPool.For<Parties>(false);
     public Repository<Invites> iRepo = Constants.repositoryPool.For<Invites>(false);
     public Repository<Friends> fRepo = Constants.repositoryPool.For<Friends>(false);
+    public Repository<Pings> pingsRepo = Constants.repositoryPool.For<Pings>(false);
 
     [HttpGet("Fortnite/user/{accountId}")]
     public async Task<IActionResult> GetUser(string accountId)
@@ -39,13 +40,36 @@ public class PartyController : ControllerBase
             .ToList();
 
         var invites = await iRepo.FindAllAsync(new Invites { SentBy = accountId });
+        var pings = await pingsRepo.FindAllAsync(new Pings { SentBy = accountId });
+
+        var formattedInvites = invites.Select(x => new
+        {
+            party_id = x.PartyId,
+            meta = JsonSerializer.Deserialize<Dictionary<string, string>>(x.Meta),
+            sent_by = x.SentBy,
+            sent_to = x.SentTo,
+            sent_at = x.SentAt,
+            updated_at = x.UpdatedAt,
+            expires_at = x.ExpiresAt,
+            status = x.Status,
+        });
+        
+        var formattedPings = pings.Select(x => new
+        {
+            id = x.PartyId,
+            sent_by = x.SentBy,
+            sent_to = x.SentTo,
+            sent_at = x.SentAt,
+            meta = JsonSerializer.Deserialize<Dictionary<string, string>>(x.Meta),
+            expires_at = x.ExpiresAt
+        });
 
         return Ok(new
         {
-            current = currentParties ?? new List<Parties>(),
+            current = currentParties,
             pending = Array.Empty<object>(),
-            invites = invites ?? new List<Invites>(),
-            pings = Array.Empty<object>(), // TODO: Store pings later
+            invites = formattedInvites,
+            pings = formattedPings
         });
     }
 
@@ -923,6 +947,12 @@ public class PartyController : ControllerBase
             socket.Send(xmlMessage.ToString(SaveOptions.DisableFormatting));
         }
 
+        return Ok();
+    }
+
+    [HttpPost("Fortnite/user/{accountId}/pings/{pingerId}")]
+    public async Task<IActionResult> CreatePing(string accountId, string pingerId)
+    {
         return Ok();
     }
 }
