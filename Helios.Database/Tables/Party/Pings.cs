@@ -5,8 +5,6 @@ namespace Helios.Database.Tables.Party;
 [Entity("pings")]
 public class Pings : BaseTable
 {
-    [Column("partyId")]
-    public string PartyId { get; set; }
     [Column("sent_by")]
     public string SentBy { get; set; }
     [Column("meta")]

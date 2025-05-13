@@ -23,11 +23,12 @@ namespace Helios.Controllers;
 [Route("/party/api/v1/")]
 public class PartyController : ControllerBase
 {
-    public Repository<Parties> pRepo = Constants.repositoryPool.For<Parties>(false);
-    public Repository<Invites> iRepo = Constants.repositoryPool.For<Invites>(false);
-    public Repository<Friends> fRepo = Constants.repositoryPool.For<Friends>(false);
-    public Repository<Pings> pingsRepo = Constants.repositoryPool.For<Pings>(false);
-
+    private Repository<Parties> pRepo = Constants.repositoryPool.For<Parties>(false);
+    private Repository<Invites> iRepo = Constants.repositoryPool.For<Invites>(false);
+    private Repository<Friends> fRepo = Constants.repositoryPool.For<Friends>(false);
+    private Repository<Pings> pingsRepo = Constants.repositoryPool.For<Pings>(false);
+    private Repository<User> uRepo = Constants.repositoryPool.For<User>(false);
+    
     [HttpGet("Fortnite/user/{accountId}")]
     public async Task<IActionResult> GetUser(string accountId)
     {
@@ -56,7 +57,6 @@ public class PartyController : ControllerBase
         
         var formattedPings = pings.Select(x => new
         {
-            id = x.PartyId,
             sent_by = x.SentBy,
             sent_to = x.SentTo,
             sent_at = x.SentAt,
@@ -953,6 +953,45 @@ public class PartyController : ControllerBase
     [HttpPost("Fortnite/user/{accountId}/pings/{pingerId}")]
     public async Task<IActionResult> CreatePing(string accountId, string pingerId)
     {
-        return Ok();
+        var ping = await pingsRepo.FindAsync(new Pings { SentTo = accountId, SentBy = pingerId });
+        if (ping != null)
+            await pingsRepo.DeleteAsync(new Pings { SentTo = accountId, SentBy = pingerId });
+
+        var now = DateTime.UtcNow;
+        var expiryTime = now.AddHours(1);
+
+        var newPing = new Pings
+        {
+            SentBy = pingerId,
+            SentTo = accountId,
+            SentAt = now.ToIsoUtcString(),
+            ExpiresAt = expiryTime.ToIsoUtcString(),
+            Meta = "{}"
+        };
+        await pingsRepo.SaveAsync(newPing);
+
+        var user = await uRepo.FindByColumnAsync("accountid", pingerId);
+        if (user == null)
+            return AccountErrors.AccountNotFound(accountId).Apply(HttpContext);
+
+        Constants.GlobalXmppClientService.ForwardStanzaAsync(accountId, JsonConvert.SerializeObject(new
+        {
+            expires = newPing.ExpiresAt,
+            meta = new Dictionary<string, string>(),
+            ns = "Fortnite",
+            pinger_dn = user.Username,
+            pinger_id = pingerId,
+            sent = newPing.SentAt,
+            type = "com.epicgames.social.party.notification.v0.PING"
+        }));
+
+        return Ok(new
+        {
+            sent_by = newPing.SentBy,
+            sent_to = newPing.SentTo,
+            sent_at = newPing.SentAt,
+            expires_at = newPing.ExpiresAt,
+            meta = new Dictionary<string, string>()
+        });
     }
 }
