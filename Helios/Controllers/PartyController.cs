@@ -974,7 +974,7 @@ public class PartyController : ControllerBase
         if (user == null)
             return AccountErrors.AccountNotFound(accountId).Apply(HttpContext);
 
-        Constants.GlobalXmppClientService.ForwardStanzaAsync(accountId, JsonConvert.SerializeObject(new
+        await Constants.GlobalXmppClientService.ForwardStanzaAsync(accountId, JsonConvert.SerializeObject(new
         {
             expires = newPing.ExpiresAt,
             meta = new Dictionary<string, string>(),
