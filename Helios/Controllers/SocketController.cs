@@ -1,5 +1,5 @@
 ﻿using Helios.Configuration;
-using Helios.Database.Tables.Fortnite;
+using Helios.Database.Tables.Party;
 using Helios.Database.Tables.XMPP;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;

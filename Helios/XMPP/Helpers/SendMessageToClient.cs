@@ -37,7 +37,7 @@ public static class SendMessageToClient
             if (!Globals._socketConnections.TryGetValue(targetClient.SocketId, out var receiverSocket))
                 return false;
             
-            receiverSocket.Send(messageXml.ToString(SaveOptions.DisableFormatting));
+            await receiverSocket.Send(messageXml.ToString(SaveOptions.DisableFormatting));
             return true;
         }
         catch (Exception)

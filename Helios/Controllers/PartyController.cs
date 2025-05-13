@@ -4,7 +4,7 @@ using Helios.Classes.Party.SquadAssignments;
 using Helios.Configuration;
 using Helios.Database.Repository;
 using Helios.Database.Tables.Account;
-using Helios.Database.Tables.Fortnite;
+using Helios.Database.Tables.Party;
 using Helios.Database.Tables.XMPP;
 using Helios.Managers;
 using Helios.Socket;
@@ -24,22 +24,28 @@ namespace Helios.Controllers;
 public class PartyController : ControllerBase
 {
     public Repository<Parties> pRepo = Constants.repositoryPool.For<Parties>(false);
+    public Repository<Invites> iRepo = Constants.repositoryPool.For<Invites>(false);
+    public Repository<Friends> fRepo = Constants.repositoryPool.For<Friends>(false);
 
     [HttpGet("Fortnite/user/{accountId}")]
     public async Task<IActionResult> GetUser(string accountId)
     {
         var parties = await pRepo.FindAllByTableAsync();
 
-        var party = parties.FirstOrDefault(p =>
-            (p.Members.FromJson<List<PartyMember>>()
-                ?.Any(m => m.AccountId == accountId)) == true);
+        var currentParties = parties
+            .Where(p =>
+                p.Members.FromJson<List<PartyMember>>()?
+                    .Any(m => m.AccountId == accountId) == true)
+            .ToList();
+
+        var invites = await iRepo.FindAllAsync(new Invites { SentBy = accountId });
 
         return Ok(new
         {
-            current = party ?? new Parties(),
+            current = currentParties ?? new List<Parties>(),
             pending = Array.Empty<object>(),
-            invites = party?.Invites.FromJson<List<PartyInvite>>() ?? new List<PartyInvite>(),
-            pings = Array.Empty<object>(), // TODO: I will eventually have to store pings!?!?
+            invites = invites ?? new List<Invites>(),
+            pings = Array.Empty<object>(), // TODO: Store pings later
         });
     }
 
@@ -100,7 +106,6 @@ public class PartyController : ControllerBase
             Config = JsonSerializer.Serialize(requestData["config"].ToObject<Dictionary<string, dynamic>>()),
             Members = JsonSerializer.Serialize(new List<PartyMember> { partyMember }),
             Meta = JsonSerializer.Serialize(requestData["meta"].ToObject<Dictionary<string, string>>()),
-            Invites = JsonSerializer.Serialize(new List<PartyInvite>()),
             Applicants = Array.Empty<string>(),
             Revision = 0,
             Intentions = Array.Empty<string>()
@@ -128,7 +133,7 @@ public class PartyController : ControllerBase
                 }
             },
             meta = requestData["meta"].ToObject<Dictionary<string, string>>(),
-            invites = Array.Empty<PartyInvite>(),
+            invites = Array.Empty<Invites>(),
             applicants = Array.Empty<string>(),
             revision = 0,
             intentions = Array.Empty<string>()
@@ -138,17 +143,20 @@ public class PartyController : ControllerBase
     [HttpGet("Fortnite/parties/{partyId}")]
     public async Task<IActionResult> GetPartyById(string partyId)
     {
-        var party = await pRepo.FindByColumnAsync("partyid", partyId);
+        var party = await pRepo.FindByColumnAsync("partyid", partyId, useCache: false);
 
         if (party == null)
         {
             Logger.Error($"Party {partyId} not found.");
             return PartyErrors.PartyNotFound.WithMessage($"Party {partyId} does not exist.").Apply(HttpContext);
         }
+
         var partyConfig = party.Config != null ? JsonSerializer.Deserialize<Dictionary<string, dynamic>>(party.Config) : new Dictionary<string, dynamic>();
         var members = party.Members != null ? JsonSerializer.Deserialize<List<PartyMember>>(party.Members) : new List<PartyMember>();
         var meta = party.Meta != null ? JsonSerializer.Deserialize<Dictionary<string, string>>(party.Meta) : new Dictionary<string, string>();
-        var invites = party.Invites != null ? JsonSerializer.Deserialize<List<PartyInvite>>(party.Invites) : new List<PartyInvite>();
+
+        var memberAccountIds = members.Select(m => m.AccountId).ToList();
+        var invites = await iRepo.FindAllByColumnAsync("sent_by", memberAccountIds, useCache: false);
 
         var memberList = members.Select(member => new
         {
@@ -592,7 +600,7 @@ public class PartyController : ControllerBase
         if (memberIndex == -1)
             return PartyErrors.MemberNotFound.WithMessage($"Member {accountId} not found in party {partyId}.")
                 .Apply(HttpContext);
-        
+
         partyMembers.RemoveAt(memberIndex);
         party.Revision++;
         party.UpdatedAt = timestamp;
@@ -735,9 +743,7 @@ public class PartyController : ControllerBase
                         type = "com.epicgames.social.party.notification.v0.PARTY_UPDATED",
                         updated_at = party.UpdatedAt
                     }, Formatting.Indented);
-
-                    Console.WriteLine(updateBody);
-
+                    
                     foreach (var member in partyMembers)
                     {
                         if (!socketMap.TryGetValue(member.AccountId, out var clientInfo))
@@ -769,9 +775,8 @@ public class PartyController : ControllerBase
         var party = await pRepo.FindByColumnAsync("partyid", partyId);
         if (party == null)
             return PartyErrors.PartyNotFound.WithMessage($"Party {partyId} does not exist.").Apply(HttpContext);
-        
+
         var partyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members);
-        Console.WriteLine(JsonConvert.SerializeObject(partyMembers, Formatting.Indented));
         int newCaptainIndex = partyMembers.FindIndex(x => x.AccountId == accountId);
 
         if (newCaptainIndex == -1)
@@ -820,6 +825,100 @@ public class PartyController : ControllerBase
 
             var xmlMessage = new XElement(xmlBase);
             xmlMessage.SetAttributeValue("to", client.Jid);
+
+            socket.Send(xmlMessage.ToString(SaveOptions.DisableFormatting));
+        }
+
+        return Ok();
+    }
+
+    [HttpPost("Fortnite/parties/{partyId}/invites/{accountId}")]
+    public async Task<IActionResult> InviteMemberToParty(string partyId, string accountId)
+    {
+        if (!await VerifyToken.Verify(HttpContext))
+            return AuthenticationErrors.InvalidToken("Failed to verify token.").Apply(HttpContext);
+
+        var party = await pRepo.FindByColumnAsync("partyid", partyId);
+        if (party == null)
+            return PartyErrors.PartyNotFound.WithMessage($"Party {partyId} does not exist.").Apply(HttpContext);
+
+        Dictionary<string, object> meta;
+        try
+        {
+            using var reader = new StreamReader(Request.Body);
+            var requestBody = await reader.ReadToEndAsync();
+            var requestData = JObject.Parse(requestBody);
+            meta = requestData is JToken token ? PartyManager.ConvertJTokenToObject(token) : new Dictionary<string, object>();
+        }
+        catch
+        {
+            return MCPErrors.InvalidPayload.Apply(HttpContext);
+        }
+        
+        if (!HttpContext.Request.Cookies.TryGetValue("User", out var userJson) || string.IsNullOrEmpty(userJson))
+            return AccountErrors.AccountNotFound(HttpContext.Request.Cookies["AccountId"] ?? "unknown").Apply(HttpContext);
+
+        var user = JsonSerializer.Deserialize<User>(userJson);
+        var timestamp = DateTime.UtcNow.ToIsoUtcString();
+        var expiryTime = DateTime.Parse(timestamp).AddHours(1).ToIsoUtcString();
+
+        var newInvite = new Invites
+        {
+            PartyId = party.PartyId,
+            SentBy = user.AccountId,
+            Meta = JsonSerializer.Serialize(meta),
+            SentTo = accountId,
+            SentAt = timestamp,
+            UpdatedAt = timestamp,
+            ExpiresAt = expiryTime,
+            Status = "SENT"
+        };
+
+        await iRepo.SaveAsync(newInvite);
+        
+        party.UpdatedAt = timestamp;
+        await pRepo.UpdateAsync(party);
+
+        var partyMembers = JsonSerializer.Deserialize<List<PartyMember>>(party.Members);
+        var inviter = partyMembers.FirstOrDefault(x => x.AccountId == user.AccountId);
+        if (inviter == null)
+            return AccountErrors.AccountNotFound(user.AccountId).WithMessage($"Inviter {user.AccountId} not found.").Apply(HttpContext);
+
+        var friends = await fRepo.FindAllAsync(new Friends { AccountId = user.AccountId });
+        if (!friends.Any())
+            return AccountErrors.AccountNotFound(accountId)
+                .WithMessage($"Friends for user {accountId} not found.")
+                .Apply(HttpContext);
+
+        var friendAccounts = friends.Where(f => f.Status == "ACCEPTED").Select(f => f.FriendId).ToHashSet();
+        var friendsInParty = partyMembers.Where(m => friendAccounts.Contains(m.AccountId)).Select(m => m.AccountId).ToList();
+
+        var messageBody = new
+        {
+            expires = expiryTime,
+            meta,
+            ns = "Fortnite",
+            party_id = party.PartyId,
+            inviter_dn = inviter.Meta.GetValueOrDefault("urn:epic:member:dn_s", ""),
+            invitee_id = user.AccountId,
+            memebrs_count = partyMembers.Count,
+            sent_at = timestamp,
+            updated_by = timestamp,
+            friends_ids = friendsInParty,
+            sent = timestamp,
+            type = "com.epicgames.social.party.notification.v0.INITIAL_INVITE"
+        };
+        
+        var client = await Constants.repositoryPool.For<ClientSessions>().FindByColumnAsync("accountid", user.AccountId);
+        if (client != null && Globals._socketConnections.TryGetValue(client.SocketId, out var socket))
+        {
+            var xmlns = XNamespace.Get("jabber:client");
+            var xmlMessage = new XElement(xmlns + "message",
+                new XAttribute("xmlns", "jabber:client"),
+                new XAttribute("from", "xmpp-admin@prod.ol.epicgames.com"),
+                new XAttribute("to", client.Jid),
+                new XElement("body", JsonConvert.SerializeObject(messageBody))
+            );
 
             socket.Send(xmlMessage.ToString(SaveOptions.DisableFormatting));
         }

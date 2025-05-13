@@ -56,7 +56,7 @@ public class AuthHandler
         await clientSessionsRepository().UpdateAsync(client);
         
         Logger.Info($"New XMPP Client logged in as {user.Username}");
-        socket.Send(new XElement(
+        await socket.Send(new XElement(
             XNamespace.Get("urn:ietf:params:xml:ns:xmpp-sasl") + "success"
         ).ToString());
     }

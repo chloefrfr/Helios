@@ -52,7 +52,7 @@ public class IqHandler
                 }
                 break;
             case "_xmpp_session1":
-                socket.Send(new XElement(XNamespace.Get("jabber:client") + "iq",
+                await socket.Send(new XElement(XNamespace.Get("jabber:client") + "iq",
                     new XAttribute("to", client.Jid),
                     new XAttribute("from", "prod.ol.epicgames.com"),
                     new XAttribute("id", "_xmpp_session1"),
@@ -73,34 +73,44 @@ public class IqHandler
                     if (friend.Status != "ACCEPTED")
                         continue;
 
-                    var cl = await clientSessionsRepository().FindAsync(new ClientSessions { AccountId = friend.AccountId });
-                    if (cl is null)
+                    var friendClient = await clientSessionsRepository().FindAsync(new ClientSessions { AccountId = friend.AccountId });
+                    if (friendClient is null)
                     {
                         Logger.Error($"Friend with AccountId '{friend.AccountId}' not found.");
                         socket.Close();
                         return;
                     }
 
-                    var deserializedLastPresenceUpdate = cl.LastPresenceUpdate != null 
-                        ? JsonSerializer.Deserialize<LastPresenceUpdate>(cl.LastPresenceUpdate)
+                    var deserializedLastPresenceUpdate = friendClient.LastPresenceUpdate != null 
+                        ? JsonSerializer.Deserialize<LastPresenceUpdate>(friendClient.LastPresenceUpdate)
                         : new LastPresenceUpdate();
+                    
+                    var clientNamespace = XNamespace.Get("jabber:client");
 
-                    try {
-                        var presenceXml = new XElement(XNamespace.Get("jabber:client") + "presence",
+                    try
+                    {
+
+                        var presenceXml = new XElement(clientNamespace + "presence",
                             new XAttribute("to", client.Jid),
+                            new XAttribute("from", friendClient.Jid),
                             new XAttribute("xmlns", "jabber:client"),
-                            new XAttribute("from", cl.Jid),
-                            new XAttribute("type", "available"),
-                            deserializedLastPresenceUpdate.IsAway ? new XElement("show", "away") : null,
-                            new XElement("status", deserializedLastPresenceUpdate.StatusString ?? string.Empty)
-                        );
-    
-                        socket.Send(presenceXml.ToString());
-                    } catch (Exception ex) {
-                        Logger.Error($"Error creating presence XML for {cl.AccountId}: {ex.Message}");
+                            new XAttribute("type", "available"));
+                        if (deserializedLastPresenceUpdate.IsAway)
+                        {
+                            presenceXml.Add(new XElement(clientNamespace + "show", "away"));
+                        }
+
+                        presenceXml.Add(new XElement(clientNamespace + "status", deserializedLastPresenceUpdate.StatusString));
+
+                        await socket.Send(presenceXml.ToString());
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"Error creating presence XML for {friendClient.AccountId}: {ex.Message}");
                     }
                 }
-                break;
+
+                    break;
             default:          
                 Logger.Warn($"Missing attributeId: {attributeId}");
                 socket.Send(

@@ -78,9 +78,6 @@ public class XmppClient
 
         if (sender is null || receiver is null)
             return;
-
-        Logger.Debug($"Sender SocketId: {sender.SocketId}");
-        Logger.Debug($"Receiver SocketId: {receiver.SocketId}");
         
         var lastPresence = JsonSerializer.Deserialize<LastPresenceUpdate>(sender.LastPresenceUpdate) ?? new LastPresenceUpdate();
 

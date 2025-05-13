@@ -3,7 +3,7 @@ using Helios.Database.Attributes;
 using Newtonsoft.Json;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 
-namespace Helios.Database.Tables.Fortnite;
+namespace Helios.Database.Tables.Party;
 
 public class PartyMember
 {
@@ -17,14 +17,10 @@ public class PartyMember
     public string Connections { get; set; } = JsonSerializer.Serialize(new PartyMemberConnection());
     [JsonProperty("revision")]
     public int Revision { get; set; }
-    [JsonProperty("captain")]
-    public string? Captain { get; set; }
     [JsonProperty("updated_at")]
     public string UpdatedAt { get; set; }
     [JsonProperty("joined_at")]
     public string JoinedAt { get; set; }
-    [JsonProperty("jid")]
-    public string? Jid { get; set; }
 }
 
 public class PartyMemberConnection
@@ -78,8 +74,6 @@ public class Parties : BaseTable
     public string[] Applicants { get; set; } = Array.Empty<string>();   
     [Column("meta")]
     public string Meta { get; set; }
-    [Column("invites")]
-    public string Invites { get; set; } = JsonSerializer.Serialize(new PartyInvite());
     [Column("revision")] 
     public int Revision { get; set; } = 0;
     [Column("intentions")]

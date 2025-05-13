@@ -2,7 +2,7 @@
 using System.Xml.Linq;
 using Helios.Configuration;
 using Helios.Database.Repository;
-using Helios.Database.Tables.Fortnite;
+using Helios.Database.Tables.Party;
 using Helios.Database.Tables.XMPP;
 using Helios.Utilities;
 using Newtonsoft.Json;

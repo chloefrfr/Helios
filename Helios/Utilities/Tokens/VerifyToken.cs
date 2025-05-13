@@ -78,6 +78,12 @@ public class VerifyToken
             {
                 return false;
             }
+            
+            context.Response.Cookies.Append("AccountId", accountId, new CookieOptions
+            {
+                HttpOnly = true,
+                Expires = DateTime.UtcNow.AddDays(7)
+            });
 
             string userJson = System.Text.Json.JsonSerializer.Serialize(user);
             context.Response.Cookies.Append("User", userJson, new CookieOptions
