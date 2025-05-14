@@ -28,7 +28,7 @@ public class PartyController : ControllerBase
     private Repository<Friends> fRepo = Constants.repositoryPool.For<Friends>(false);
     private Repository<Pings> pingsRepo = Constants.repositoryPool.For<Pings>(false);
     private Repository<User> uRepo = Constants.repositoryPool.For<User>(false);
-    
+
     [HttpGet("Fortnite/user/{accountId}")]
     public async Task<IActionResult> GetUser(string accountId)
     {
@@ -54,7 +54,7 @@ public class PartyController : ControllerBase
             expires_at = x.ExpiresAt,
             status = x.Status,
         });
-        
+
         var formattedPings = pings.Select(x => new
         {
             sent_by = x.SentBy,
@@ -767,7 +767,7 @@ public class PartyController : ControllerBase
                         type = "com.epicgames.social.party.notification.v0.PARTY_UPDATED",
                         updated_at = party.UpdatedAt
                     }, Formatting.Indented);
-                    
+
                     foreach (var member in partyMembers)
                     {
                         if (!socketMap.TryGetValue(member.AccountId, out var clientInfo))
@@ -878,7 +878,7 @@ public class PartyController : ControllerBase
         {
             return MCPErrors.InvalidPayload.Apply(HttpContext);
         }
-        
+
         if (!HttpContext.Request.Cookies.TryGetValue("User", out var userJson) || string.IsNullOrEmpty(userJson))
             return AccountErrors.AccountNotFound(HttpContext.Request.Cookies["AccountId"] ?? "unknown").Apply(HttpContext);
 
@@ -899,7 +899,7 @@ public class PartyController : ControllerBase
         };
 
         await iRepo.SaveAsync(newInvite);
-        
+
         party.UpdatedAt = timestamp;
         await pRepo.UpdateAsync(party);
 
@@ -932,7 +932,7 @@ public class PartyController : ControllerBase
             sent = timestamp,
             type = "com.epicgames.social.party.notification.v0.INITIAL_INVITE"
         };
-        
+
         var client = await Constants.repositoryPool.For<ClientSessions>().FindByColumnAsync("accountid", user.AccountId);
         if (client != null && Globals._socketConnections.TryGetValue(client.SocketId, out var socket))
         {
@@ -993,5 +993,92 @@ public class PartyController : ControllerBase
             expires_at = newPing.ExpiresAt,
             meta = new Dictionary<string, string>()
         });
+    }
+
+    [HttpGet("Fortnite/user/{accountId}/pings/{pingerId}/parties")]
+    public async Task<IActionResult> GetPartyFromPing(string accountId, string pingerId)
+    {
+        var parties = await pRepo.FindAllByTableAsync();
+        var queriedPings = await pingsRepo.FindAllByColumnsAsync(new Dictionary<string, object> 
+        {
+            { "sentto", accountId },
+            { "sentby", pingerId }
+        });
+        
+        if (!queriedPings.Any())
+        {
+            queriedPings = new List<Pings> { new Pings { SentBy = pingerId } };
+        }
+
+        var partyWithMembers = parties.Select(party => new
+        {
+            Party = party,
+            Members = string.IsNullOrEmpty(party.Members)
+                ? new List<PartyMember>()
+                : JsonSerializer.Deserialize<List<PartyMember>>(party.Members)
+        }).ToList();
+
+        var partyByMemberIdLookup = new Dictionary<string, (Parties Party, List<PartyMember> Members)>();
+        foreach (var p in partyWithMembers)
+        {
+            foreach (var member in p.Members)
+            {
+                partyByMemberIdLookup[member.AccountId] = (p.Party, p.Members);
+            }
+        }
+
+        var allMemberIds = new HashSet<string>();
+        var result = new List<object>();
+
+        foreach (var ping in queriedPings)
+        {
+            if (!partyByMemberIdLookup.TryGetValue(ping.SentBy, out var match))
+                continue;
+
+            var (party, members) = match;
+
+            foreach (var member in members)
+            {
+                allMemberIds.Add(member.AccountId);
+            }
+
+            var partyConfig = string.IsNullOrEmpty(party.Config)
+                ? new Dictionary<string, dynamic>()
+                : JsonSerializer.Deserialize<Dictionary<string, dynamic>>(party.Config);
+
+            var meta = string.IsNullOrEmpty(party.Meta)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(party.Meta);
+
+            var memberList = members.Select(member => new
+            {
+                account_id = member.AccountId,
+                meta = member.Meta,
+                connections = string.IsNullOrEmpty(member.Connections)
+                    ? new List<PartyMemberConnection>()
+                    : JsonSerializer.Deserialize<List<PartyMemberConnection>>(member.Connections),
+                revision = member.Revision,
+                updated_at = member.UpdatedAt,
+                joined_at = member.JoinedAt,
+                role = member.Role
+            }).ToList();
+
+            var allInvites = await iRepo.FindAllByColumnAsync("sentby", allMemberIds.ToList(), useCache: false);
+            
+            result.Add(new
+            {
+                id = party.PartyId,
+                created_at = party.CreatedAt,
+                updated_at = party.UpdatedAt,
+                config = partyConfig,
+                members = memberList,
+                applicants = new List<object>(),
+                meta,
+                invites = allInvites, 
+                revision = party.Revision
+            });
+        }
+        
+        return Ok(result);
     }
 }

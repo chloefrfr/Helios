@@ -5,14 +5,14 @@ namespace Helios.Database.Tables.Party;
 [Entity("pings")]
 public class Pings : BaseTable
 {
-    [Column("sent_by")]
+    [Column("sentBy")]
     public string SentBy { get; set; }
     [Column("meta")]
     public string Meta { get; set; }
-    [Column("sent_to")]
+    [Column("sentTo")]
     public string SentTo { get; set; }
-    [Column("sent_at")]
+    [Column("sentAt")]
     public string SentAt { get; set; }
-    [Column("expires_at")]
+    [Column("expiresAt")]
     public string ExpiresAt { get; set; }
 }

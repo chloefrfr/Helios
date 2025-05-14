@@ -178,7 +178,173 @@ namespace Helios.Database.Repository
                 return entity;
             }
         }
-        
+
+        public async Task<TEntity> FindByColumnsAsync(IDictionary<string, object> columnValues, int timeout = 500,
+            bool useCache = true)
+        {
+            if (columnValues == null || !columnValues.Any())
+                throw new ArgumentException("At least one column/value pair must be provided", nameof(columnValues));
+
+            var whereClause = new List<string>();
+            var parameters = new DynamicParameters();
+            var validColumns = new List<string>();
+
+            foreach (var kvp in columnValues)
+            {
+                var property = _metadata.Properties.FirstOrDefault(p =>
+                    p.ColumnName.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase) ||
+                    p.Name.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase));
+
+                if (property == null)
+                    throw new ArgumentException($"Column or property '{kvp.Key}' not found", nameof(columnValues));
+
+                whereClause.Add($"{property.ColumnName} = @{property.ColumnName}");
+                parameters.Add(property.ColumnName, ConvertValue(kvp.Value));
+                validColumns.Add(property.ColumnName);
+            }
+
+            var sql = _findBaseSql + string.Join(" AND ", whereClause) + " LIMIT 1";
+
+            var cacheKeyValues = columnValues.OrderBy(kvp => kvp.Key)
+                .Select(kvp => $"{kvp.Key}:{kvp.Value}")
+                .ToList();
+            var cacheKey = _cachingEnabled && useCache
+                ? $"{_cacheKeyPrefix}findby:{string.Join(":", cacheKeyValues)}"
+                : null;
+
+            if (_cachingEnabled && useCache && _cache.TryGetValue<TEntity>(cacheKey, out var cachedEntity))
+            {
+                return cachedEntity;
+            }
+
+            var conn = GetConnection();
+
+            try
+            {
+                var entity = await conn.QueryFirstOrDefaultAsync<TEntity>(
+                    sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                if (_cachingEnabled && useCache && entity != null)
+                {
+                    _cache.Set(cacheKey, entity, _defaultCacheOptions);
+                }
+
+                return entity;
+            }
+            catch
+            {
+                using var newConn = CreateConnection();
+                await newConn.OpenAsync().ConfigureAwait(false);
+                var entity = await newConn.QueryFirstOrDefaultAsync<TEntity>(
+                    sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                if (_cachingEnabled && useCache && entity != null)
+                {
+                    _cache.Set(cacheKey, entity, _defaultCacheOptions);
+                }
+
+                return entity;
+            }
+        }
+
+        public async Task<TEntity> FindByColumnsAsync(object columnValues, int timeout = 500, bool useCache = true)
+        {
+            if (columnValues == null)
+                throw new ArgumentNullException(nameof(columnValues));
+
+            var dictionary = new Dictionary<string, object>();
+            foreach (var prop in columnValues.GetType().GetProperties())
+            {
+                dictionary.Add(prop.Name, prop.GetValue(columnValues));
+            }
+
+            return await FindByColumnsAsync(dictionary, timeout, useCache).ConfigureAwait(false);
+        }
+
+        public async Task<IEnumerable<TEntity>> FindAllByColumnsAsync(IDictionary<string, object> columnValues,
+            int timeout = 500, bool useCache = true)
+        {
+            if (columnValues == null || !columnValues.Any())
+                throw new ArgumentException("At least one column/value pair must be provided", nameof(columnValues));
+
+            var whereClause = new List<string>();
+            var parameters = new DynamicParameters();
+            var validColumns = new List<string>();
+
+            foreach (var kvp in columnValues)
+            {
+                var property = _metadata.Properties.FirstOrDefault(p =>
+                    p.ColumnName.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase) ||
+                    p.Name.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase));
+
+                if (property == null)
+                    throw new ArgumentException($"Column or property '{kvp.Key}' not found", nameof(columnValues));
+
+                whereClause.Add($"{property.ColumnName} = @{property.ColumnName}");
+                parameters.Add(property.ColumnName, ConvertValue(kvp.Value));
+                validColumns.Add(property.ColumnName);
+            }
+
+            var sql = _findBaseSql + string.Join(" AND ", whereClause);
+
+            var cacheKeyValues = columnValues.OrderBy(kvp => kvp.Key)
+                .Select(kvp => $"{kvp.Key}:{kvp.Value}")
+                .ToList();
+            var cacheKey = _cachingEnabled && useCache
+                ? $"{_cacheKeyPrefix}findallby:{string.Join(":", cacheKeyValues)}"
+                : null;
+
+            if (_cachingEnabled && useCache &&
+                _cache.TryGetValue<IEnumerable<TEntity>>(cacheKey, out var cachedEntities))
+            {
+                return cachedEntities;
+            }
+
+            var conn = GetConnection();
+
+            try
+            {
+                var entities = await conn.QueryAsync<TEntity>(
+                    sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                if (_cachingEnabled && useCache && entities.Any())
+                {
+                    _cache.Set(cacheKey, entities, _defaultCacheOptions);
+                }
+
+                return entities;
+            }
+            catch
+            {
+                using var newConn = CreateConnection();
+                await newConn.OpenAsync().ConfigureAwait(false);
+                var entities = await newConn.QueryAsync<TEntity>(
+                    sql, parameters, commandTimeout: timeout).ConfigureAwait(false);
+
+                if (_cachingEnabled && useCache && entities.Any())
+                {
+                    _cache.Set(cacheKey, entities, _defaultCacheOptions);
+                }
+
+                return entities;
+            }
+        }
+
+        public async Task<IEnumerable<TEntity>> FindAllByColumnsAsync(object columnValues, int timeout = 500,
+            bool useCache = true)
+        {
+            if (columnValues == null)
+                throw new ArgumentNullException(nameof(columnValues));
+
+            var dictionary = new Dictionary<string, object>();
+            foreach (var prop in columnValues.GetType().GetProperties())
+            {
+                dictionary.Add(prop.Name, prop.GetValue(columnValues));
+            }
+
+            return await FindAllByColumnsAsync(dictionary, timeout, useCache).ConfigureAwait(false);
+        }
+
         public async Task<TEntity> FindByColumnAsync(string columnName, object value, int timeout = 500, bool useCache = true)
         {
             var property = _metadata.Properties.FirstOrDefault(p => 

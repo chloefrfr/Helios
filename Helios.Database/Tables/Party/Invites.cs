@@ -7,17 +7,17 @@ public class Invites : BaseTable
 {
     [Column("partyId")]
     public string PartyId { get; set; }
-    [Column("sent_by")]
+    [Column("sentBy")]
     public string SentBy { get; set; }
     [Column("meta")]
     public string Meta { get; set; }
-    [Column("sent_to")]
+    [Column("sentTo")]
     public string SentTo { get; set; }
-    [Column("sent_at")]
+    [Column("sentAt")]
     public string SentAt { get; set; }
-    [Column("updated_at")]
+    [Column("updatedAt")]
     public string UpdatedAt { get; set; }
-    [Column("expires_at")]
+    [Column("expiresAt")]
     public string ExpiresAt { get; set; }
     [Column("status")]
     public string Status { get; set; }

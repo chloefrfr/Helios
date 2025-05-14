@@ -52,8 +52,6 @@ public class XmppClient
         if (clientSession is null)
             return;
         
-        Logger.Debug($"SocketId: {clientSession.SocketId}");
-        
         var stanza = new XElement(XNamespace.Get("jabber:client") + "message",
             new XAttribute("from", "xmpp-admin@prod.ol.epicgames.com"),
             new XAttribute("to", clientSession.Jid),
@@ -108,8 +106,6 @@ public class XmppClient
     
     private async void Server_MessageReceived(object sender, MessageReceivedEventArgs e)
     {
-        Logger.Info($"Message from {e.Client.SocketId}: {e.Message}");
-        
         var socket = Globals._socketConnections[e.Client.SocketId];
 
         var clientSessionRepository = Constants.repositoryPool.Repo<ClientSessions>();
