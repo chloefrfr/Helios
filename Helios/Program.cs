@@ -36,7 +36,7 @@ namespace Helios
                 options.AllowSynchronousIO = false;
             });
             
-            ServiceConfiguration.ConfigureServices(builder.Services, builder.Environment);
+            await ServiceConfiguration.ConfigureServices(builder.Services, builder.Environment);
             LoggingConfiguration.ConfigureLogging(builder.Logging, builder.Configuration);
             WebhostConfiguration.ConfigureWebhosts(builder.WebHost);
 

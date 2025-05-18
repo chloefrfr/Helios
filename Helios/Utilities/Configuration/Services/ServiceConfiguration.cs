@@ -1,7 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Threading.RateLimiting;
 using Helios.Classes.Response;
+using Helios.Database.Tables.Account;
+using Helios.Database.Tables.Profiles;
 using Helios.HTTP.Utilities.Extensions;
+using Helios.Interfaces;
 using Helios.Managers;
 using Helios.Managers.Unreal;
 using Helios.Services;
@@ -14,7 +17,7 @@ namespace Helios.Configuration.Services;
 
 public static class ServiceConfiguration
 {
-    public static void ConfigureServices(IServiceCollection services, IWebHostEnvironment env)
+    public static async Task ConfigureServices(IServiceCollection services, IWebHostEnvironment env)
     {
         services.AddMemoryCache();
         services.AddControllers();
@@ -81,6 +84,12 @@ public static class ServiceConfiguration
         });
 
         services.AddSingleton<UnrealAssetProvider>();
+        
+        await Task.WhenAll(
+            Constants.repositoryPool.For<User>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Profiles>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Items>().PreloadAllAsync()
+        );
     }
 
     public static void ConfigureLogging(IServiceCollection services)
