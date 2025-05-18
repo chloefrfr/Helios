@@ -481,8 +481,6 @@ public class PartyController : ControllerBase
             Role = "MEMBER"
         });
 
-        Console.WriteLine(JsonConvert.SerializeObject(deserializedPartyMembers, Formatting.Indented));
-
         var partyMeta = party.Meta != null
             ? JsonConvert.DeserializeObject<Dictionary<string, object>>(party.Meta)
             : new Dictionary<string, object>();
