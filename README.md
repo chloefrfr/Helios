@@ -1,6 +1,7 @@
 # Helios
 
 Fortnite Backend written in C# that aims to be as performant as possible.
+> ⚠️ **Note:** Initial response times may be slightly slow due to .NET cold start. All known optimizations have been applied to reduce this as much as possible.
 
 # Tested/Supported Versions
 
