@@ -11,6 +11,10 @@
         <TieredCompilation>false</TieredCompilation> 
         <ReadyToRunUseCrossgen2>true</ReadyToRunUseCrossgen2>
         <EnableProfileGuidedOptimization>true</EnableProfileGuidedOptimization>
+        
+        <TieredCompilation>true</TieredCompilation>
+        <TieredCompilationQuickJit>true</TieredCompilationQuickJit>
+        <TieredCompilationQuickJitForLoops>true</TieredCompilationQuickJitForLoops>
     </PropertyGroup>
 
     <ItemGroup>

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+﻿﻿using System.Text.Json;
 using System.Xml.Linq;
 using Helios.Classes.Party.SquadAssignments;
 using Helios.Configuration;
