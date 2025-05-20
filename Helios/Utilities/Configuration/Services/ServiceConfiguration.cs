@@ -2,7 +2,9 @@
 using System.Threading.RateLimiting;
 using Helios.Classes.Response;
 using Helios.Database.Tables.Account;
+using Helios.Database.Tables.Party;
 using Helios.Database.Tables.Profiles;
+using Helios.Database.Tables.XMPP;
 using Helios.HTTP.Utilities.Extensions;
 using Helios.Interfaces;
 using Helios.Managers;
@@ -88,7 +90,15 @@ public static class ServiceConfiguration
         await Task.WhenAll(
             Constants.repositoryPool.For<User>().PreloadAllAsync(),
             Constants.repositoryPool.For<Profiles>().PreloadAllAsync(),
-            Constants.repositoryPool.For<Items>().PreloadAllAsync()
+            Constants.repositoryPool.For<Items>().PreloadAllAsync(),
+            Constants.repositoryPool.For<ClientSessions>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Loadouts>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Quests>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Invites>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Parties>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Pings>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Tokens>().PreloadAllAsync(),
+            Constants.repositoryPool.For<Friends>().PreloadAllAsync()
         );
     }
 
